@@ -1,5 +1,8 @@
 
 use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::{PrimitiveType, NoIndices}, program, uniform};
+use crate::GameState;
+use std::f32::consts::PI;
+use cgmath::{Rad, Matrix4};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -152,7 +155,7 @@ pub fn initialize_render_state(display: &Display) -> RenderState {
     RenderState{ shape, program, diffuse_texture, normal_texture }
 }
 
-pub fn render(display: &Display, state: &RenderState) {
+pub fn render(display: &Display, state: &RenderState, game: &GameState) {
     let mut target = display.draw();
     target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
@@ -174,17 +177,22 @@ pub fn render(display: &Display, state: &RenderState) {
         ] 
     };
 
-    let view = view_matrix(&[2.0, -1.0, 1.0], &[-2.0, 1.0, 1.0], &[0.0, 1.0, 0.0]);
+    let camera_direction = [
+        game.camera_yaw.cos() * game.camera_pitch.cos(),
+        game.camera_yaw.sin() * game.camera_pitch.cos(),
+        game.camera_pitch.sin(),
+    ];
+    let view = view_matrix(&game.camera_position.into(), &camera_direction, &[0.0, 0.0, 1.0]);
 
+    let scale = Matrix4::from_scale(100.0);
+    let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
+    let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
+    let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
+    
     let uniforms = uniform! {
         perspective: perspective,
         view: view,
-        model: [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 2.0, 1.0f32],
-        ],
+        model: model,
         diffuse_texture: &state.diffuse_texture,
         normal_texture: &state.normal_texture,
         u_light_direction: [-1.0, 0.4, 0.9f32],
