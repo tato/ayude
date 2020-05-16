@@ -2,8 +2,10 @@
 use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::{PrimitiveType, NoIndices}, program, uniform, IndexBuffer};
 use crate::GameState;
 use std::f32::consts::PI;
-use cgmath::{Rad, Matrix4};
+use cgmath::{Rad, Matrix4, SquareMatrix};
 use gltf::{mesh::Mode, Gltf, Semantic};
+
+type M4 = Matrix4<f32>;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -233,13 +235,28 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
 
     let mut meshes = Vec::new();
 
-    for node in document.nodes() {
+    // tree traversal because transforms for a node are relative to their
+    // parents transform :(
+    
+    let mut node_queue = Vec::new();
+    let mut transform_queue = Vec::new();
+
+    node_queue.extend(document.default_scene().unwrap().nodes());
+    transform_queue.extend((0..node_queue.len()).map(|_| M4::identity()));
+
+    while !node_queue.is_empty() {
+        let node = node_queue.pop().unwrap();
+        let parent_transform = transform_queue.pop().unwrap();
+
+        let transform = M4::from(node.transform().matrix()) * parent_transform;
+
+        node_queue.extend(node.children());
+        transform_queue.extend((0..node.children().len()).map(|_| transform));
+
         let mesh = match node.mesh() {
             Some(mesh) => mesh,
             None => continue,
         };
-
-        let transform = node.transform().matrix();
 
         for primitive in mesh.primitives() {
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
@@ -257,7 +274,7 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
 
             let vertices = VertexBuffer::new(display, &vertices).unwrap();
             let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
-
+            let transform = transform.into();
             meshes.push(Mesh{ vertices, indices, transform });
         }
     }
