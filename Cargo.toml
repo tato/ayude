@@ -18,8 +18,8 @@ version = "0.23"
 default-features = false
 features = [ "png" ]
 
-[dependencies.cgmath]
-version = "0.17"
+[dependencies.euler]
+version = "*"
 
 [dependencies.gltf]
 version = "*"

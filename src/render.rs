@@ -1,11 +1,7 @@
 
-use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::{PrimitiveType, NoIndices}, program, uniform, IndexBuffer};
+use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::PrimitiveType, uniform, IndexBuffer};
 use crate::GameState;
-use std::f32::consts::PI;
-use cgmath::{Rad, Matrix4, SquareMatrix};
-use gltf::{mesh::Mode, Gltf, Semantic};
-
-type M4 = Matrix4<f32>;
+use euler::*;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -241,14 +237,22 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
     let mut node_queue = Vec::new();
     let mut transform_queue = Vec::new();
 
+    let y_up_to_z_up_transform: Mat4 = [
+        [ 0.0, 1.0, 0.0, 0.0 ],
+        [ 0.0, 0.0, 1.0, 0.0 ],
+        [ 1.0, 0.0, 0.0, 0.0 ],
+        [ 0.0, 0.0, 0.0, 1.0f32 ],
+    ].into();
+    //let y_up_to_z_up_transform = Mat4::identity();
+
     node_queue.extend(document.default_scene().unwrap().nodes());
-    transform_queue.extend((0..node_queue.len()).map(|_| M4::identity()));
+    transform_queue.extend((0..node_queue.len()).map(|_| Mat4::identity()));
 
     while !node_queue.is_empty() {
         let node = node_queue.pop().unwrap();
         let parent_transform = transform_queue.pop().unwrap();
 
-        let transform = M4::from(node.transform().matrix()) * parent_transform;
+        let transform = parent_transform * Mat4::from(node.transform().matrix());
 
         node_queue.extend(node.children());
         transform_queue.extend((0..node.children().len()).map(|_| transform));
@@ -274,7 +278,7 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
 
             let vertices = VertexBuffer::new(display, &vertices).unwrap();
             let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
-            let transform = transform.into();
+            let transform = (y_up_to_z_up_transform * transform).into();
             meshes.push(Mesh{ vertices, indices, transform });
         }
     }

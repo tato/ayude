@@ -2,13 +2,12 @@
 use glium::{Display, glutin::{window::WindowBuilder, event_loop::{ControlFlow, EventLoop}, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}}};
 use std::{f32::consts::PI, time::{Instant, Duration}};
 use render::initialize_render_state;
-use cgmath::Vector3;
-use cgmath::prelude::InnerSpace;
+use euler::*;
 
 mod render;
 
 pub struct GameState {
-    camera_position: Vector3<f32>,
+    camera_position: Vec3,
     camera_yaw: f32,
     camera_pitch: f32,
 
@@ -16,13 +15,13 @@ pub struct GameState {
 }
 
 fn update(delta: Duration, game: &mut GameState) {
-    let mut forward_direction: Vector3<f32> = [
+    let mut forward_direction: Vec3 = [
         game.camera_yaw.cos() * game.camera_pitch.cos(),
         game.camera_yaw.sin() * game.camera_pitch.cos(),
         game.camera_pitch.sin(),
     ].into();
     forward_direction = forward_direction.normalize();
-    let right_direction: Vector3<f32> = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
+    let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
 
     let speed = 100.0;
     game.camera_position += forward_direction * game.movement[1] * speed * delta.as_secs_f32();
@@ -45,6 +44,13 @@ fn main() {
         camera_position: [2.0, -1.0, 1.0].into(),
         camera_yaw: 0.463,
         camera_pitch: 0.42,
+
+        movement: [0.0, 0.0],
+    };
+    let mut game = GameState {
+        camera_position: [0.0, 0.0, 0.0].into(),
+        camera_yaw: 0.0,
+        camera_pitch: 0.0,
 
         movement: [0.0, 0.0],
     };
