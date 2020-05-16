@@ -1,8 +1,9 @@
 
-use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::{PrimitiveType, NoIndices}, program, uniform};
+use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::{PrimitiveType, NoIndices}, program, uniform, IndexBuffer};
 use crate::GameState;
 use std::f32::consts::PI;
 use cgmath::{Rad, Matrix4};
+use gltf::{mesh::Mode, Gltf, Semantic};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -11,6 +12,12 @@ struct Vertex {
     uv: [f32; 2],
 }
 implement_vertex!(Vertex, position, normal, uv);
+
+struct Mesh {
+    vertices: VertexBuffer<Vertex>,
+    indices: IndexBuffer<u16>,
+    transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
+}
 
 fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
     let f = {
@@ -51,6 +58,8 @@ pub struct RenderState {
     program: Program,
     diffuse_texture: Texture2d,
     normal_texture: Texture2d,
+
+    sample_scene: Vec<Mesh>,
 }
 
 pub fn initialize_render_state(display: &Display) -> RenderState {
@@ -136,7 +145,6 @@ pub fn initialize_render_state(display: &Display) -> RenderState {
     "#;
 
     let program = Program::from_source(display, vertex_shader_src, fragment_shader_src, None).unwrap();
-
     
     let diffuse_texture = {
         let image = image::load_from_memory(include_bytes!("bonfire.png")).unwrap().to_rgba();
@@ -152,7 +160,9 @@ pub fn initialize_render_state(display: &Display) -> RenderState {
         Texture2d::new(display, raw_image).unwrap()
     };
 
-    RenderState{ shape, program, diffuse_texture, normal_texture }
+    let sample_scene = load_gltf(&display, "src/principito_y_el_aviador/scene.gltf").unwrap();
+
+    RenderState{ shape, program, diffuse_texture, normal_texture, sample_scene }
 }
 
 pub fn render(display: &Display, state: &RenderState, game: &GameState) {
@@ -184,30 +194,73 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
     ];
     let view = view_matrix(&game.camera_position.into(), &camera_direction, &[0.0, 0.0, 1.0]);
 
-    let scale = Matrix4::from_scale(100.0);
-    let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
-    let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
-    let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
+    for mesh in &state.sample_scene {
+        // let scale = Matrix4::from_scale(100.0);
+        // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
+        // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
+        // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
+
+        let model = mesh.transform;
+        
+        let uniforms = uniform! {
+            perspective: perspective,
+            view: view,
+            model: model,
+            diffuse_texture: &state.diffuse_texture,
+            normal_texture: &state.normal_texture,
+            u_light_direction: [-1.0, 0.4, 0.9f32],
+        };
     
-    let uniforms = uniform! {
-        perspective: perspective,
-        view: view,
-        model: model,
-        diffuse_texture: &state.diffuse_texture,
-        normal_texture: &state.normal_texture,
-        u_light_direction: [-1.0, 0.4, 0.9f32],
-    };
-
-    let params = glium::DrawParameters {
-        depth: glium::Depth {
-            test: glium::draw_parameters::DepthTest::IfLess,
-            write: true,
+        let params = glium::DrawParameters {
+            depth: glium::Depth {
+                test: glium::draw_parameters::DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
+            //backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
             ..Default::default()
-        },
-        //backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
-        ..Default::default()
-    };
-
-    target.draw(&state.shape, &NoIndices(PrimitiveType::TriangleStrip), &state.program, &uniforms, &params).unwrap();
+        };
+    
+        // target.draw(&state.shape, &NoIndices(PrimitiveType::TriangleStrip), &state.program, &uniforms, &params).unwrap();
+        target.draw(&mesh.vertices, &mesh.indices, &state.program, &uniforms, &params).unwrap();
+    }
+    
     target.finish().unwrap();
+}
+
+fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
+    let (document, buffers, images) = gltf::import(file_name).ok()?;
+
+    let mut meshes = Vec::new();
+
+    for node in document.nodes() {
+        let mesh = match node.mesh() {
+            Some(mesh) => mesh,
+            None => continue,
+        };
+
+        let transform = node.transform().matrix();
+
+        for primitive in mesh.primitives() {
+            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
+            let positions_iter = reader.read_positions().unwrap();
+            let normals_iter = reader.read_normals().unwrap();
+            let uvs_iter = reader.read_tex_coords(0).unwrap().into_f32();
+
+            let vertices: Vec<Vertex> = positions_iter
+                .zip(normals_iter)
+                .zip(uvs_iter)
+                .map(|((position, normal), uv)| { Vertex{ position, normal, uv }})
+                .collect();
+
+            let indices: Vec<u16> = reader.read_indices().unwrap().into_u32().map(|it| it as u16).collect();
+
+            let vertices = VertexBuffer::new(display, &vertices).unwrap();
+            let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
+
+            meshes.push(Mesh{ vertices, indices, transform });
+        }
+    }
+
+    Some(meshes)
 }
