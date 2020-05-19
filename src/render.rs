@@ -1,7 +1,8 @@
 
 use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::PrimitiveType, uniform, IndexBuffer};
-use crate::GameState;
+use crate::{BlingError, GameState};
 use euler::*;
+use std::io::Read;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -15,6 +16,9 @@ struct Mesh {
     vertices: VertexBuffer<Vertex>,
     indices: IndexBuffer<u16>,
     transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
+    diffuse: Option<Texture2d>,
+    normal: Option<Texture2d>,
+    base_diffuse_color: [f32; 4],
 }
 
 fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
@@ -68,97 +72,15 @@ pub fn initialize_render_state(display: &Display) -> RenderState {
         Vertex { position: [ 1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 0.0] },
     ]).unwrap();
 
-    let vertex_shader_src = r#"
-        #version 150
+    static VERTEX_SOURCE: &str = include_str!("vertex.glsl");
+    static FRAGMENT_SOURCE: &str = include_str!("fragment.glsl");
 
-        in vec3 position;
-        in vec3 normal;
-        in vec2 uv;
-
-        out vec3 v_position;
-        out vec3 v_normal;
-        out vec2 v_uv;
-
-        uniform mat4 perspective;
-        uniform mat4 view;
-        uniform mat4 model;
-
-        void main() {
-            mat4 modelview = view * model;
-
-            v_normal = transpose(inverse(mat3(modelview))) * normal;
-
-            gl_Position = perspective * modelview * vec4(position, 1.0);
-            v_position = gl_Position.xyz / gl_Position.w;
-
-            v_uv = uv;
-        }
-    "#;
-
-    let fragment_shader_src = r#"
-        #version 140
-
-        in vec3 v_position;
-        in vec3 v_normal;
-        in vec2 v_uv;
-        out vec4 color;
-
-        uniform vec3 u_light_direction;
-        uniform sampler2D diffuse_texture;
-        uniform sampler2D normal_texture;
-
-        const vec3 specular_color = vec3(1.0, 1.0, 1.0);
-
-        mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
-            vec3 dp1 = dFdx(pos);
-            vec3 dp2 = dFdy(pos);
-            vec2 duv1 = dFdx(uv);
-            vec2 duv2 = dFdy(uv);
-        
-            vec3 dp2perp = cross(dp2, normal);
-            vec3 dp1perp = cross(normal, dp1);
-            vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-            vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-        
-            float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
-            return mat3(T * invmax, B * invmax, normal);
-        }
-
-        void main() {
-            vec3 normal_map = texture(normal_texture, v_uv).rgb;
-            mat3 tbn = cotangent_frame(v_normal, v_position, v_uv);
-            vec3 real_normal = normalize(tbn * -(normal_map * 2.0 - 1.0));
-
-            float diffuse = max(dot(normalize(real_normal), normalize(u_light_direction)), 0.0);
-
-            vec3 camera_dir = normalize(-v_position);
-            vec3 half_direction = normalize(normalize(u_light_direction) + camera_dir);
-            float specular = pow(max(dot(half_direction, normalize(real_normal)), 0.0), 16.0);
-
-            vec3 diffuse_color = texture(diffuse_texture, v_uv).rgb;
-            vec3 ambient_color = diffuse_color * 0.1;
-
-            color = vec4(ambient_color + diffuse * diffuse_color + specular * specular_color, 1.0);
-        }
-    "#;
-
-    let program = Program::from_source(display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let program = Program::from_source(display, VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
     
-    let diffuse_texture = {
-        let image = image::load_from_memory(include_bytes!("bonfire.png")).unwrap().to_rgba();
-        let image_dimensions = image.dimensions();
-        let raw_image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-        Texture2d::new(display, raw_image).unwrap()
-    };
+    let diffuse_texture = load_texture_from_image_in_memory(display, include_bytes!("bonfire.png")).unwrap();
+    let normal_texture = load_texture_from_image_in_memory(display, include_bytes!("normal.png")).unwrap();
 
-    let normal_texture = {
-        let image = image::load_from_memory(include_bytes!("normal.png")).unwrap().to_rgba();
-        let image_dimensions = image.dimensions();
-        let raw_image = RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-        Texture2d::new(display, raw_image).unwrap()
-    };
-
-    let sample_scene = load_gltf(&display, "src/principito_y_el_aviador/scene.gltf").unwrap();
+    let sample_scene = load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
 
     RenderState{ shape, program, diffuse_texture, normal_texture, sample_scene }
 }
@@ -199,13 +121,19 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
         // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
         let model = mesh.transform;
+
+        let diffuse_texture = mesh.diffuse.as_ref().unwrap_or(&state.diffuse_texture);
+        let normal_texture = mesh.normal.as_ref().unwrap_or(&state.normal_texture);
         
         let uniforms = uniform! {
             perspective: perspective,
             view: view,
             model: model,
-            diffuse_texture: &state.diffuse_texture,
-            normal_texture: &state.normal_texture,
+            diffuse_texture: diffuse_texture,
+            normal_texture: normal_texture,
+            has_diffuse_texture: mesh.diffuse.is_some(),
+            has_normal_texture: mesh.normal.is_some(),
+            base_diffuse_color: mesh.base_diffuse_color,
             u_light_direction: [-1.0, 0.4, 0.9f32],
         };
     
@@ -226,8 +154,12 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
     target.finish().unwrap();
 }
 
-fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
-    let (document, buffers, images) = gltf::import(file_name).ok()?;
+fn load_gltf(display: &Display, file_name: &str) -> anyhow::Result<Vec<Mesh>> {
+    let (document, buffers, _) = gltf::import(file_name)?;
+
+    let gltf_base_folder = file_name.rfind('/')
+        .map(|idx| &file_name[0..idx+1])
+        .unwrap_or("");
 
     let mut meshes = Vec::new();
 
@@ -243,9 +175,9 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
         [ 1.0, 0.0, 0.0, 0.0 ],
         [ 0.0, 0.0, 0.0, 1.0f32 ],
     ].into();
-    //let y_up_to_z_up_transform = Mat4::identity();
 
-    node_queue.extend(document.default_scene().unwrap().nodes());
+    let default_scene_error: BlingError = BlingError::new("Document does not have a default scene".into());
+    node_queue.extend(document.default_scene().ok_or(default_scene_error)?.nodes());
     transform_queue.extend((0..node_queue.len()).map(|_| Mat4::identity()));
 
     while !node_queue.is_empty() {
@@ -276,12 +208,63 @@ fn load_gltf(display: &Display, file_name: &str) -> Option<Vec<Mesh>> {
 
             let indices: Vec<u16> = reader.read_indices().unwrap().into_u32().map(|it| it as u16).collect();
 
+            let gltf_tex_to_glium_tex = |tex: gltf::texture::Texture| {
+                match tex.source().source() {
+                    gltf::image::Source::View{ .. } => None,
+                    gltf::image::Source::Uri{ uri, .. } => {
+                        let source = {
+                            let mut source = Vec::new();
+                            std::fs::File::open(format!("{}{}", gltf_base_folder, uri)).ok()?.read_to_end(&mut source).ok()?;
+                            source
+                        };
+                        load_texture_from_image_in_memory(display, &source)
+                    }
+                }
+            };
+
+            let diffuse = primitive.material().pbr_metallic_roughness().base_color_texture()
+                .map(|info| info.texture())
+                .and_then(gltf_tex_to_glium_tex);
+            let normal = primitive.material().normal_texture()
+                .map(|norm| norm.texture())
+                .and_then(gltf_tex_to_glium_tex);
+
+            let base_diffuse_color = primitive.material().pbr_metallic_roughness().base_color_factor();
+
             let vertices = VertexBuffer::new(display, &vertices).unwrap();
             let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
             let transform = (y_up_to_z_up_transform * transform).into();
-            meshes.push(Mesh{ vertices, indices, transform });
+            meshes.push(Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
-    Some(meshes)
+    Ok(meshes)
+}
+
+
+fn load_texture_from_image_in_memory(display: &Display, input: &[u8]) -> Option<Texture2d> {
+
+    let mut width: i32 = 0;
+    let mut height: i32 = 0;
+    let mut channels: i32 = 0;
+
+    unsafe {
+        let bytes = stb_image::stb_image::bindgen::stbi_load_from_memory(
+            input.as_ptr(),
+            input.len() as i32,
+            &mut width as *mut i32,
+            &mut height as *mut i32,
+            &mut channels as *mut i32,
+            4
+        );
+        
+        if bytes.is_null() {
+            let _reason = std::ffi::CStr::from_ptr(stb_image::stb_image::bindgen::stbi_failure_reason());
+            None
+        } else {
+            let bytes_length = (width*height*4) as usize;
+            let raw_image = RawImage2d::from_raw_rgba_reversed(std::slice::from_raw_parts(bytes, bytes_length), (width as u32, height as u32));
+            Texture2d::new(display, raw_image).ok()
+        }
+    }
 }

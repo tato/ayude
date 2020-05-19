@@ -7,19 +7,24 @@ edition = "2018"
 [profile.dev]
 panic = "unwind"
 
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 panic = "unwind"
+debug = true
 
 [dependencies.glium]
 version = "*"
 
-[dependencies.image]
-version = "0.23"
-default-features = false
-features = [ "png" ]
+[dependencies.stb_image]
+version = "0.2"
 
 [dependencies.euler]
 version = "*"
 
 [dependencies.gltf]
+path = "gltf"
+
+[dependencies.anyhow]
 version = "*"

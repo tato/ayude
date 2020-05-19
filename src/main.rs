@@ -1,8 +1,25 @@
 #![feature(clamp)]
 use glium::{Display, glutin::{window::WindowBuilder, event_loop::{ControlFlow, EventLoop}, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}}};
-use std::{f32::consts::PI, time::{Instant, Duration}};
+use std::{f32::consts::PI, time::{Instant, Duration}, cell::Cell, sync::Mutex};
 use render::initialize_render_state;
 use euler::*;
+#[derive(Debug, Clone)]
+struct BlingError(String);
+impl BlingError {
+    fn new(s: String) -> Self {
+        BlingError(s)
+    }
+}
+impl std::fmt::Display for BlingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::error::Error for BlingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
 mod render;
 
