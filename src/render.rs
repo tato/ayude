@@ -174,7 +174,8 @@ pub fn load_texture_from_image_in_memory(display: &Display, input: &[u8]) -> Opt
             None
         } else {
             let bytes_length = (width*height*4) as usize;
-            let raw_image = RawImage2d::from_raw_rgba_reversed(std::slice::from_raw_parts(bytes, bytes_length), (width as u32, height as u32));
+            let owned = Vec::from_raw_parts(bytes, bytes_length, bytes_length);
+            let raw_image = RawImage2d::from_raw_rgba(owned, (width as u32, height as u32));
             Texture2d::new(display, raw_image).ok()
         }
     }
