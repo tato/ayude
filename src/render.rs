@@ -1,24 +1,22 @@
 
-use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, index::PrimitiveType, uniform, IndexBuffer};
-use crate::{BlingError, GameState};
-use euler::*;
-use std::io::Read;
+use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, uniform, IndexBuffer};
+use crate::{GameState};
 
 #[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
 }
 implement_vertex!(Vertex, position, normal, uv);
 
-struct Mesh {
-    vertices: VertexBuffer<Vertex>,
-    indices: IndexBuffer<u16>,
-    transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
-    diffuse: Option<Texture2d>,
-    normal: Option<Texture2d>,
-    base_diffuse_color: [f32; 4],
+pub struct Mesh {
+    pub vertices: VertexBuffer<Vertex>,
+    pub indices: IndexBuffer<u16>,
+    pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
+    pub diffuse: Option<Texture2d>,
+    pub normal: Option<Texture2d>,
+    pub base_diffuse_color: [f32; 4],
 }
 
 fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
@@ -80,7 +78,7 @@ pub fn initialize_render_state(display: &Display) -> RenderState {
     let diffuse_texture = load_texture_from_image_in_memory(display, include_bytes!("bonfire.png")).unwrap();
     let normal_texture = load_texture_from_image_in_memory(display, include_bytes!("normal.png")).unwrap();
 
-    let sample_scene = load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
+    let sample_scene = crate::gltf::load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
 
     RenderState{ shape, program, diffuse_texture, normal_texture, sample_scene }
 }
@@ -154,95 +152,8 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
     target.finish().unwrap();
 }
 
-fn load_gltf(display: &Display, file_name: &str) -> anyhow::Result<Vec<Mesh>> {
-    let (document, buffers, _) = gltf::import(file_name)?;
 
-    let gltf_base_folder = file_name.rfind('/')
-        .map(|idx| &file_name[0..idx+1])
-        .unwrap_or("");
-
-    let mut meshes = Vec::new();
-
-    // tree traversal because transforms for a node are relative to their
-    // parents transform :(
-    
-    let mut node_queue = Vec::new();
-    let mut transform_queue = Vec::new();
-
-    let y_up_to_z_up_transform: Mat4 = [
-        [ 0.0, 1.0, 0.0, 0.0 ],
-        [ 0.0, 0.0, 1.0, 0.0 ],
-        [ 1.0, 0.0, 0.0, 0.0 ],
-        [ 0.0, 0.0, 0.0, 1.0f32 ],
-    ].into();
-
-    let default_scene_error: BlingError = BlingError::new("Document does not have a default scene".into());
-    node_queue.extend(document.default_scene().ok_or(default_scene_error)?.nodes());
-    transform_queue.extend((0..node_queue.len()).map(|_| Mat4::identity()));
-
-    while !node_queue.is_empty() {
-        let node = node_queue.pop().unwrap();
-        let parent_transform = transform_queue.pop().unwrap();
-
-        let transform = parent_transform * Mat4::from(node.transform().matrix());
-
-        node_queue.extend(node.children());
-        transform_queue.extend((0..node.children().len()).map(|_| transform));
-
-        let mesh = match node.mesh() {
-            Some(mesh) => mesh,
-            None => continue,
-        };
-
-        for primitive in mesh.primitives() {
-            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
-            let positions_iter = reader.read_positions().unwrap();
-            let normals_iter = reader.read_normals().unwrap();
-            let uvs_iter = reader.read_tex_coords(0).unwrap().into_f32();
-
-            let vertices: Vec<Vertex> = positions_iter
-                .zip(normals_iter)
-                .zip(uvs_iter)
-                .map(|((position, normal), uv)| { Vertex{ position, normal, uv }})
-                .collect();
-
-            let indices: Vec<u16> = reader.read_indices().unwrap().into_u32().map(|it| it as u16).collect();
-
-            let gltf_tex_to_glium_tex = |tex: gltf::texture::Texture| {
-                match tex.source().source() {
-                    gltf::image::Source::View{ .. } => None,
-                    gltf::image::Source::Uri{ uri, .. } => {
-                        let source = {
-                            let mut source = Vec::new();
-                            std::fs::File::open(format!("{}{}", gltf_base_folder, uri)).ok()?.read_to_end(&mut source).ok()?;
-                            source
-                        };
-                        load_texture_from_image_in_memory(display, &source)
-                    }
-                }
-            };
-
-            let diffuse = primitive.material().pbr_metallic_roughness().base_color_texture()
-                .map(|info| info.texture())
-                .and_then(gltf_tex_to_glium_tex);
-            let normal = primitive.material().normal_texture()
-                .map(|norm| norm.texture())
-                .and_then(gltf_tex_to_glium_tex);
-
-            let base_diffuse_color = primitive.material().pbr_metallic_roughness().base_color_factor();
-
-            let vertices = VertexBuffer::new(display, &vertices).unwrap();
-            let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
-            let transform = (y_up_to_z_up_transform * transform).into();
-            meshes.push(Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
-        }
-    }
-
-    Ok(meshes)
-}
-
-
-fn load_texture_from_image_in_memory(display: &Display, input: &[u8]) -> Option<Texture2d> {
+pub fn load_texture_from_image_in_memory(display: &Display, input: &[u8]) -> Option<Texture2d> {
 
     let mut width: i32 = 0;
     let mut height: i32 = 0;

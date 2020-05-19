@@ -11,20 +11,12 @@ panic = "unwind"
 opt-level = 2
 
 [profile.release]
-panic = "unwind"
 debug = true
+panic = "unwind"
 
-[dependencies.glium]
-version = "*"
-
-[dependencies.stb_image]
-version = "0.2"
-
-[dependencies.euler]
-version = "*"
-
-[dependencies.gltf]
-path = "gltf"
-
-[dependencies.anyhow]
-version = "*"
+[dependencies]
+glium = { version="0.27" }
+stb_image = { version="0.2" }
+glam = { version="0.8" }
+serde = { version="1.0", features=[ "derive" ] }
+serde_json = { version="1.0" }

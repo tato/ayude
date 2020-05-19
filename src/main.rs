@@ -1,26 +1,22 @@
 #![feature(clamp)]
-use glium::{Display, glutin::{window::WindowBuilder, event_loop::{ControlFlow, EventLoop}, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}}};
-use std::{f32::consts::PI, time::{Instant, Duration}, cell::Cell, sync::Mutex};
+use glam::Vec3;
+use glium::{
+    glutin::{
+        event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
+        event_loop::{ControlFlow, EventLoop},
+        window::WindowBuilder,
+        ContextBuilder,
+    },
+    Display,
+};
 use render::initialize_render_state;
-use euler::*;
-#[derive(Debug, Clone)]
-struct BlingError(String);
-impl BlingError {
-    fn new(s: String) -> Self {
-        BlingError(s)
-    }
-}
-impl std::fmt::Display for BlingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl std::error::Error for BlingError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
+use std::{
+    f32::consts::PI,
+    time::{Duration, Instant},
+};
 
+#[allow(non_snake_case)]
+mod gltf;
 mod render;
 
 pub struct GameState {
@@ -36,21 +32,20 @@ fn update(delta: Duration, game: &mut GameState) {
         game.camera_yaw.cos() * game.camera_pitch.cos(),
         game.camera_yaw.sin() * game.camera_pitch.cos(),
         game.camera_pitch.sin(),
-    ].into();
+    ]
+    .into();
     forward_direction = forward_direction.normalize();
     let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
 
     let speed = 100.0;
     game.camera_position += forward_direction * game.movement[1] * speed * delta.as_secs_f32();
-    game.camera_position -= right_direction   * game.movement[0] * speed * delta.as_secs_f32();
+    game.camera_position -= right_direction * game.movement[0] * speed * delta.as_secs_f32();
 }
 
 fn main() {
     let event_loop = EventLoop::new();
     let wb = WindowBuilder::new();
-    let cb = ContextBuilder::new()
-        .with_depth_buffer(24)
-        .with_vsync(true);
+    let cb = ContextBuilder::new().with_depth_buffer(24).with_vsync(true);
     let display = Display::new(wb, cb, &event_loop).unwrap();
     display.gl_window().window().set_cursor_grab(true).unwrap();
     display.gl_window().window().set_cursor_visible(false);
@@ -81,41 +76,67 @@ fn main() {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
-                },
+                }
                 _ => return,
             },
             Event::DeviceEvent { event, .. } => match event {
-                DeviceEvent::MouseMotion{ delta } => {
+                DeviceEvent::MouseMotion { delta } => {
                     game.camera_yaw += delta.0 as f32 * 0.006;
-                    if game.camera_yaw >=  2.0*PI { game.camera_yaw -= 2.0*PI; }
+                    if game.camera_yaw >= 2.0 * PI {
+                        game.camera_yaw -= 2.0 * PI;
+                    }
                     // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
 
                     let freedom_y = 0.8;
                     game.camera_pitch += -delta.1 as f32 * 0.006;
-                    game.camera_pitch = game.camera_pitch.clamp(-PI/2.0*freedom_y, PI/2.0*freedom_y);
-                },
+                    game.camera_pitch = game
+                        .camera_pitch
+                        .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
+                }
                 DeviceEvent::Key(input) => match input.virtual_keycode {
-                    Some(VirtualKeyCode::W) => game.movement[1] = if input.state == ElementState::Pressed {  1.0 } else { 0.0f32.min(game.movement[1]) },
-                    Some(VirtualKeyCode::A) => game.movement[0] = if input.state == ElementState::Pressed { -1.0 } else { 0.0f32.max(game.movement[0]) },
-                    Some(VirtualKeyCode::S) => game.movement[1] = if input.state == ElementState::Pressed { -1.0 } else { 0.0f32.max(game.movement[1]) },
-                    Some(VirtualKeyCode::D) => game.movement[0] = if input.state == ElementState::Pressed {  1.0 } else { 0.0f32.min(game.movement[0]) },
+                    Some(VirtualKeyCode::W) => {
+                        game.movement[1] = if input.state == ElementState::Pressed {
+                            1.0
+                        } else {
+                            0.0f32.min(game.movement[1])
+                        }
+                    }
+                    Some(VirtualKeyCode::A) => {
+                        game.movement[0] = if input.state == ElementState::Pressed {
+                            -1.0
+                        } else {
+                            0.0f32.max(game.movement[0])
+                        }
+                    }
+                    Some(VirtualKeyCode::S) => {
+                        game.movement[1] = if input.state == ElementState::Pressed {
+                            -1.0
+                        } else {
+                            0.0f32.max(game.movement[1])
+                        }
+                    }
+                    Some(VirtualKeyCode::D) => {
+                        game.movement[0] = if input.state == ElementState::Pressed {
+                            1.0
+                        } else {
+                            0.0f32.min(game.movement[0])
+                        }
+                    }
                     _ => return,
                 },
                 _ => return,
-            }
+            },
             Event::MainEventsCleared => {
                 let delta = previous_frame_time.elapsed();
                 previous_frame_time = Instant::now();
                 update(delta, &mut game);
 
                 display.gl_window().window().request_redraw();
-            },
+            }
             Event::RedrawRequested(..) => {
                 render::render(&display, &render_state, &game);
-            },
+            }
             _ => return,
         }
     });
 }
-
-
