@@ -1,6 +1,7 @@
 
-use glium::{implement_vertex, Display, VertexBuffer, Program, texture::RawImage2d, Texture2d, Surface, uniform, IndexBuffer};
-use crate::{GameState};
+use glium::{implement_vertex, Display, VertexBuffer, Program, Surface, uniform, IndexBuffer};
+use crate::{GameState, texture_repository::TextureRepository};
+use std::rc::Rc;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -14,8 +15,8 @@ pub struct Mesh {
     pub vertices: VertexBuffer<Vertex>,
     pub indices: IndexBuffer<u16>,
     pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
-    pub diffuse: Option<Texture2d>,
-    pub normal: Option<Texture2d>,
+    pub diffuse: Option<crate::texture_repository::TextureId>,
+    pub normal: Option<crate::texture_repository::TextureId>,
     pub base_diffuse_color: [f32; 4],
 }
 
@@ -54,36 +55,40 @@ fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f3
 }
 
 pub struct RenderState {
+    texture_repository: TextureRepository,
+
     shape: VertexBuffer<Vertex>,
     program: Program,
-    diffuse_texture: Texture2d,
-    normal_texture: Texture2d,
 
     sample_scene: Vec<Mesh>,
 }
 
-pub fn initialize_render_state(display: &Display) -> RenderState {
-    let shape = VertexBuffer::new(display, &[
-        Vertex { position: [-1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 1.0] },
-        Vertex { position: [ 1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 1.0] },
-        Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 0.0] },
-        Vertex { position: [ 1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 0.0] },
-    ]).unwrap();
-
-    static VERTEX_SOURCE: &str = include_str!("vertex.glsl");
-    static FRAGMENT_SOURCE: &str = include_str!("fragment.glsl");
-
-    let program = Program::from_source(display, VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
+impl RenderState {
+    pub fn new(display: Rc<Display>) -> RenderState {
+        let mut texture_repository = TextureRepository::new(display.clone());
     
-    let diffuse_texture = load_texture_from_image_in_memory(display, include_bytes!("bonfire.png")).unwrap();
-    let normal_texture = load_texture_from_image_in_memory(display, include_bytes!("normal.png")).unwrap();
+        let shape = VertexBuffer::new(display.as_ref(), &[
+            Vertex { position: [-1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 1.0] },
+            Vertex { position: [ 1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 1.0] },
+            Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 0.0] },
+            Vertex { position: [ 1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 0.0] },
+        ]).unwrap();
+    
+        static VERTEX_SOURCE: &str = include_str!("vertex.glsl");
+        static FRAGMENT_SOURCE: &str = include_str!("fragment.glsl");
+    
+        let program = Program::from_source(display.as_ref(), VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
+    
 
-    let sample_scene = crate::gltf::load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
-
-    RenderState{ shape, program, diffuse_texture, normal_texture, sample_scene }
+        let sample_scene = crate::gltf::load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf", &mut texture_repository).unwrap();
+    
+        Self{ texture_repository, shape, program, sample_scene }
+    }
 }
 
-pub fn render(display: &Display, state: &RenderState, game: &GameState) {
+pub fn render(display: &Display, state: &mut RenderState, game: &GameState) {
+    state.texture_repository.poll_textures();
+
     let mut target = display.draw();
     target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
@@ -120,8 +125,9 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
 
         let model = mesh.transform;
 
-        let diffuse_texture = mesh.diffuse.as_ref().unwrap_or(&state.diffuse_texture);
-        let normal_texture = mesh.normal.as_ref().unwrap_or(&state.normal_texture);
+
+        let diffuse_texture = state.texture_repository.get_or_placeholder(mesh.diffuse);
+        let normal_texture = state.texture_repository.get_or_placeholder(mesh.normal);
         
         let uniforms = uniform! {
             perspective: perspective,
@@ -150,33 +156,4 @@ pub fn render(display: &Display, state: &RenderState, game: &GameState) {
     }
     
     target.finish().unwrap();
-}
-
-
-pub fn load_texture_from_image_in_memory(display: &Display, input: &[u8]) -> Option<Texture2d> {
-
-    let mut width: i32 = 0;
-    let mut height: i32 = 0;
-    let mut channels: i32 = 0;
-
-    unsafe {
-        let bytes = stb_image::stb_image::bindgen::stbi_load_from_memory(
-            input.as_ptr(),
-            input.len() as i32,
-            &mut width as *mut i32,
-            &mut height as *mut i32,
-            &mut channels as *mut i32,
-            4
-        );
-        
-        if bytes.is_null() {
-            let _reason = std::ffi::CStr::from_ptr(stb_image::stb_image::bindgen::stbi_failure_reason());
-            None
-        } else {
-            let bytes_length = (width*height*4) as usize;
-            let owned = Vec::from_raw_parts(bytes, bytes_length, bytes_length);
-            let raw_image = RawImage2d::from_raw_rgba(owned, (width as u32, height as u32));
-            Texture2d::new(display, raw_image).ok()
-        }
-    }
 }

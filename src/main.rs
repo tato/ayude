@@ -9,15 +9,15 @@ use glium::{
     },
     Display,
 };
-use render::initialize_render_state;
 use std::{
     f32::consts::PI,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, rc::Rc,
 };
 
 #[allow(non_snake_case)]
 mod gltf;
 mod render;
+mod texture_repository;
 
 pub struct GameState {
     camera_position: Vec3,
@@ -46,11 +46,14 @@ fn main() {
     let event_loop = EventLoop::new();
     let wb = WindowBuilder::new();
     let cb = ContextBuilder::new().with_depth_buffer(24).with_vsync(true);
-    let display = Display::new(wb, cb, &event_loop).unwrap();
-    display.gl_window().window().set_cursor_grab(true).unwrap();
-    display.gl_window().window().set_cursor_visible(false);
+    let display = {
+        let display = Display::new(wb, cb, &event_loop).unwrap();
+        display.gl_window().window().set_cursor_grab(true).unwrap();
+        display.gl_window().window().set_cursor_visible(false);
+        Rc::new(display)
+    };
 
-    let render_state = initialize_render_state(&display);
+    let mut render_state = render::RenderState::new(display.clone());
 
     let mut game = GameState {
         camera_position: [2.0, -1.0, 1.0].into(),
@@ -134,7 +137,7 @@ fn main() {
                 display.gl_window().window().request_redraw();
             }
             Event::RedrawRequested(..) => {
-                render::render(&display, &render_state, &game);
+                render::render(&display, &mut render_state, &game);
             }
             _ => return,
         }
