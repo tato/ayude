@@ -1,11 +1,10 @@
-use glium::{Display, VertexBuffer, IndexBuffer, index::PrimitiveType};
 use crate::*;
 use glam::{Vec3, Mat4, Quat};
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::io::Read;
-use texture_repository::TextureRepository;
 
+// todo! accurate deserialize struct. maybe copy from gltf lib.
 #[derive(Debug, Deserialize)]
 struct Document {
     asset: Asset,
@@ -54,6 +53,7 @@ struct Accesor {
     #[serde(alias = "type")]
     _type: String,
     count: usize,
+    #[serde(default)]
     byteOffset: usize,
 }
 #[derive(Debug, Deserialize)]
@@ -102,8 +102,8 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut TextureRepository) -> Option<Vec<render::Mesh>> {
-    let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name).ok()?).ok()?;
+pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
+    let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 
     let gltf_base_folder = file_name.rfind('/')
         .map(|idx| &file_name[0..idx+1])
@@ -111,11 +111,23 @@ pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut Te
 
     let buffers: Vec<Vec<u8>> = document.buffers.iter().map(|b| {
         let mut result = Vec::new();
-        std::fs::File::open(format!("{}{}", gltf_base_folder, b.uri)).ok()?.read_to_end(&mut result).ok()?;
-        Some(result)
-    }).collect::<Option<_>>()?;
+        std::fs::File::open(format!("{}{}", gltf_base_folder, b.uri))?.read_to_end(&mut result)?;
+        Ok(result)
+    }).collect::<Result<_, AyudeError>>()?;
 
-    let mut meshes = Vec::new();
+    let mut images = Vec::new();
+    let mut images_byte_buffer = Vec::new();
+    for image in &document.images {
+        let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
+        let loaded = image::open(&image_file_name)?.into_rgba();
+        let width = loaded.width();
+        let height = loaded.height();
+        let bytes = image::DynamicImage::ImageRgba8(loaded).to_bytes();
+        images.push(UnloadedImage{ offset: images_byte_buffer.len(), size: bytes.len(), width, height });
+        images_byte_buffer.extend(bytes);
+    }
+
+    let mut nodes = Vec::new();
     
     let y_up_to_z_up_transform = Mat4::from_cols_array(&[
         0.0, 1.0, 0.0, 0.0,
@@ -132,7 +144,7 @@ pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut Te
     node_queue.extend(default_scene_nodes);
 
     while !node_queue.is_empty() {
-        let node = node_queue.pop()?;
+        let node = node_queue.pop().unwrap();
         let parent_transform = transform_queue.pop().unwrap_or(Mat4::identity());
 
         let node_local_transform = {
@@ -192,21 +204,9 @@ pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut Te
                 }
             };
 
-            debug_assert!(positions.len() == normals.len() && positions.len() == uvs.len(),
-                "there isn't the same amount of positions, normals and uvs.\npositions: {}, normals: {}, uvs: {}",
-                positions.len(), normals.len(), uvs.len());
-
-            let mut vertices = Vec::new();
-            for i in 0..positions.len() {
-                let position = positions[i];
-                let normal = normals[i];
-                let uv = uvs[i];
-                vertices.push(render::Vertex{ position, normal, uv });
-            }
-
             let indices: &[u16] = {
                 let accessor = &document.accessors[primitive.indices];
-                debug_assert!(accessor.componentType == 5123);
+                debug_assert!(accessor.componentType == 5123, "accessor.componentType ({}) == 5123", accessor.componentType);
                 debug_assert!(accessor._type == "SCALAR");
                 let view = &document.bufferViews[accessor.bufferView];
                 let buffer = &buffers[view.buffer][view.byteOffset..(view.byteOffset+view.byteLength)];
@@ -218,25 +218,51 @@ pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut Te
 
             let material = &document.materials[primitive.material];
             let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().map(|info| {
-                let image = &document.images[document.textures[info.index].source];
-                let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                texture_repository.load_from_file_name(image_file_name)
+                document.textures[info.index].source
             });
             let normal = material.normalTexture.as_ref().map(|info| {
-                let image = &document.images[document.textures[info.index].source];
-                let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                texture_repository.load_from_file_name(image_file_name)
+                document.textures[info.index].source
             });
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
 
-            let vertices = VertexBuffer::new(display, &vertices).unwrap();
-            let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
+            let geometry_positions = positions.to_vec();
+            let geometry_normals = normals.to_vec();
+            let geometry_uvs = uvs.to_vec();
+            let geometry_indices = indices.to_vec();
             let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            meshes.push(render::Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
+            nodes.push(UnloadedSceneNode{ geometry_positions, geometry_normals, geometry_uvs, geometry_indices, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
-    Some(meshes)
+    Ok(UnloadedScene{ nodes, images, images_byte_buffer })
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct UnloadedSceneNode {
+    pub geometry_positions: Vec<[f32; 3]>,
+    pub geometry_normals: Vec<[f32; 3]>,
+    pub geometry_uvs: Vec<[f32; 2]>,
+    pub geometry_indices: Vec<u16>,
+
+    pub transform: [[f32; 4]; 4],
+
+    pub diffuse: Option<usize>,
+    pub normal: Option<usize>,
+
+    pub base_diffuse_color: [f32; 4],
+}
+#[derive(Serialize, Deserialize)]
+pub struct UnloadedImage {
+    pub offset: usize,
+    pub size: usize,
+    pub width: u32,
+    pub height: u32,
+}
+#[derive(Serialize, Deserialize)]
+pub struct UnloadedScene {
+    pub nodes: Vec<UnloadedSceneNode>,
+    pub images: Vec<UnloadedImage>,
+    #[serde(with = "serde_bytes")]
+    pub images_byte_buffer: Vec<u8>,
+}
