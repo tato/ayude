@@ -64,10 +64,10 @@ pub struct RenderState {
 }
 
 impl RenderState {
-    pub fn new(display: Rc<Display>) -> RenderState {
-        let mut texture_repository = TextureRepository::new(display.clone());
+    pub fn new(display: &Display) -> RenderState {
+        let mut texture_repository = TextureRepository::new(display);
     
-        let shape = VertexBuffer::new(display.as_ref(), &[
+        let shape = VertexBuffer::new(display, &[
             Vertex { position: [-1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 1.0] },
             Vertex { position: [ 1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 1.0] },
             Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 0.0] },
@@ -77,7 +77,7 @@ impl RenderState {
         static VERTEX_SOURCE: &str = include_str!("vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("fragment.glsl");
     
-        let program = Program::from_source(display.as_ref(), VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
+        let program = Program::from_source(display, VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
     
 
         let sample_scene = crate::gltf::load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf", &mut texture_repository).unwrap();
@@ -87,7 +87,7 @@ impl RenderState {
 }
 
 pub fn render(display: &Display, state: &mut RenderState, game: &GameState) {
-    state.texture_repository.poll_textures();
+    state.texture_repository.poll_textures(display);
 
     let mut target = display.draw();
     target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);

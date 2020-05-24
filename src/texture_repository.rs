@@ -11,8 +11,6 @@ struct ImageLoadedMessage {
 }
 
 pub struct TextureRepository {
-    display: Rc<glium::Display>, // todo! remove
-
     executor: futures::executor::ThreadPool,
     image_loaded_sender: mpsc::Sender<ImageLoadedMessage>,
     image_loaded_receiver: mpsc::Receiver<ImageLoadedMessage>,
@@ -22,20 +20,21 @@ pub struct TextureRepository {
 }
 
 impl TextureRepository {
-    pub fn new(display: Rc<glium::Display>) -> Self {
-        let textures = vec![ ];
-        let placeholder = {
-            let (bytes, width, height) = futures::executor::block_on(load_texture_from_image_in_memory(include_bytes!("placeholder.png"))).unwrap();
-            let raw_image = glium::texture::RawImage2d::from_raw_rgba(bytes, (width, height));
-            glium::Texture2d::new(display.as_ref(), raw_image).ok().unwrap()
-        };
+    pub fn new(display: &glium::Display) -> Self {
 
         let executor = futures::executor::ThreadPool::new().unwrap();
         let (image_loaded_sender, image_loaded_receiver) = mpsc::channel();
 
-        Self{ display, executor, image_loaded_sender, image_loaded_receiver, textures, placeholder }
+        let textures = vec![ ];
+        let placeholder = {
+            let (bytes, width, height) = futures::executor::block_on(load_texture_from_image_in_memory(include_bytes!("placeholder.png"))).unwrap();
+            let raw_image = glium::texture::RawImage2d::from_raw_rgba(bytes, (width, height));
+            glium::Texture2d::new(display, raw_image).ok().unwrap()
+        };
+
+        Self{ executor, image_loaded_sender, image_loaded_receiver, textures, placeholder }
     }
-    pub fn get(&self, id: TextureId) -> &glium::Texture2d {
+    pub fn _get(&self, id: TextureId) -> &glium::Texture2d {
         &self.textures[id].as_ref().unwrap_or(&self.placeholder)
     }
 
@@ -44,6 +43,20 @@ impl TextureRepository {
             None => &self.placeholder,
             Some(id) => &self.textures[id].as_ref().unwrap_or(&self.placeholder),
         }
+    }
+
+    pub fn _load_from_bytes(&mut self, source: Vec<u8>) -> TextureId {
+        let result = self.textures.len();
+        self.textures.push(None);
+        
+        let image_loaded_sender = self.image_loaded_sender.clone();
+        self.executor.spawn_ok(async move {
+            if let Some((bytes, width, height)) = load_texture_from_image_in_memory(&source).await {
+                image_loaded_sender.send(ImageLoadedMessage{ id: result, bytes, width, height }).unwrap();
+            }
+        });
+
+        result
     }
 
     pub fn load_from_file_name(&mut self, file_name: String) -> TextureId {
@@ -60,10 +73,10 @@ impl TextureRepository {
         result
     }
 
-    pub fn poll_textures(&mut self) {
+    pub fn poll_textures(&mut self, display: &glium::Display) {
         if let Ok(message) = self.image_loaded_receiver.try_recv() {
             let raw_image = glium::texture::RawImage2d::from_raw_rgba(message.bytes, (message.width, message.height));
-            let texture = glium::Texture2d::new(self.display.as_ref(), raw_image).ok();
+            let texture = glium::Texture2d::new(display, raw_image).ok();
             self.textures[message.id] = texture;
         }
     }
@@ -85,7 +98,6 @@ async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32
     let mut channels: i32 = 0;
 
     unsafe {
-        // stb_image::stb_image::bindgen::stbi_set_flip_vertically_on_load(1);
         let bytes = stb_image::stb_image::bindgen::stbi_load_from_memory(
             input.as_ptr(),
             input.len() as i32,
@@ -100,6 +112,7 @@ async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32
             None
         } else {
             let bytes_length = (width*height*4) as usize;
+            // i think `Vec::from_raw_parts` could leak a little bit here (`malloc` metadata or something)
             let owned = Vec::from_raw_parts(bytes, bytes_length, bytes_length);
             Some((owned, width as u32, height as u32))
         }

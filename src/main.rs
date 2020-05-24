@@ -46,14 +46,12 @@ fn main() {
     let event_loop = EventLoop::new();
     let wb = WindowBuilder::new();
     let cb = ContextBuilder::new().with_depth_buffer(24).with_vsync(true);
-    let display = {
-        let display = Display::new(wb, cb, &event_loop).unwrap();
-        display.gl_window().window().set_cursor_grab(true).unwrap();
-        display.gl_window().window().set_cursor_visible(false);
-        Rc::new(display)
-    };
 
-    let mut render_state = render::RenderState::new(display.clone());
+    let display = Display::new(wb, cb, &event_loop).unwrap();
+    display.gl_window().window().set_cursor_grab(true).unwrap();
+    display.gl_window().window().set_cursor_visible(false);
+
+    let mut render_state = render::RenderState::new(&display);
 
     let mut game = GameState {
         camera_position: [2.0, -1.0, 1.0].into(),
