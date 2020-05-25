@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 use winit::{event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}, event_loop::ControlFlow};
+use glfw::Context;
 
 mod opengl;
 #[allow(non_snake_case)]
@@ -119,24 +120,32 @@ fn get_get_proc_address(window: &winit::window::Window) -> Option<GetProcAddress
 }
 
 fn main() {
-    let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::WindowBuilder::new()
-        .build(&event_loop)
-        .unwrap();
-    get_get_proc_address(&window).unwrap();
+    let mut glfw = glfw::init(Some(glfw::FAIL_ON_ERRORS.unwrap())).unwrap();
 
-    window.set_cursor_grab(true).unwrap();
-    window.set_cursor_visible(false);
+    glfw::window_hint(glfw::WindowHint::ContextVersion(3, 3));
+    glfw::window_hint(glfw::WindowHint::OpenGlForwardCompat(false));
+    glfw::window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+    glfw::window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
+    glfw::window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGlEs));
+
+    let (mut window, mut events) = glfw.create_window(
+        300, 300,
+        "a.yude",
+        glfw::WindowMode::Windowed
+    ).unwrap();
+
+    window.set_key_polling(true);
+    window.set_cursor_mode(glfw::CursorMode::Disabled);
+    window.make_current();
+
+    if (!glfw.supports_raw_motion())
+        panic!("doesn't support raw motion :(");
+    unsafe { glfw::ffi::glfwSetInputMode(window)} :(((
+
+    gl::load_with(|s| window.get_proc_address(s));
 
     let mut render_state = render::RenderState::new();
 
-    let mut game = GameState {
-        camera_position: [2.0, -1.0, 1.0].into(),
-        camera_yaw: 0.463,
-        camera_pitch: 0.42,
-
-        movement: [0.0, 0.0],
-    };
     let mut game = GameState {
         camera_position: [0.0, 0.0, 0.0].into(),
         camera_yaw: 0.0,
@@ -147,74 +156,72 @@ fn main() {
 
     let mut previous_frame_time = Instant::now();
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
+    while !window.should_close() {
+        glfw.poll_events();
+        for (_, event) in glfw::flush_messages(&events) {
+            match event {
+                glfw::WindowEvent::Close => {
+                    window.close();
+                },
+                Event::DeviceEvent { event, .. } => match event {
+                    DeviceEvent::MouseMotion { delta } => {
+                        game.camera_yaw += delta.0 as f32 * 0.006;
+                        if game.camera_yaw >= 2.0 * PI {
+                            game.camera_yaw -= 2.0 * PI;
+                        }
+                        // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
 
-        match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                _ => return,
-            },
-            Event::DeviceEvent { event, .. } => match event {
-                DeviceEvent::MouseMotion { delta } => {
-                    game.camera_yaw += delta.0 as f32 * 0.006;
-                    if game.camera_yaw >= 2.0 * PI {
-                        game.camera_yaw -= 2.0 * PI;
+                        let freedom_y = 0.8;
+                        game.camera_pitch += -delta.1 as f32 * 0.006;
+                        game.camera_pitch = game
+                            .camera_pitch
+                            .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
                     }
-                    // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
-
-                    let freedom_y = 0.8;
-                    game.camera_pitch += -delta.1 as f32 * 0.006;
-                    game.camera_pitch = game
-                        .camera_pitch
-                        .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
-                }
-                DeviceEvent::Key(input) => match input.virtual_keycode {
-                    Some(VirtualKeyCode::W) => {
-                        game.movement[1] = if input.state == ElementState::Pressed {
-                            1.0
-                        } else {
-                            0.0f32.min(game.movement[1])
+                    DeviceEvent::Key(input) => match input.virtual_keycode {
+                        Some(VirtualKeyCode::W) => {
+                            game.movement[1] = if input.state == ElementState::Pressed {
+                                1.0
+                            } else {
+                                0.0f32.min(game.movement[1])
+                            }
                         }
-                    }
-                    Some(VirtualKeyCode::A) => {
-                        game.movement[0] = if input.state == ElementState::Pressed {
-                            -1.0
-                        } else {
-                            0.0f32.max(game.movement[0])
+                        Some(VirtualKeyCode::A) => {
+                            game.movement[0] = if input.state == ElementState::Pressed {
+                                -1.0
+                            } else {
+                                0.0f32.max(game.movement[0])
+                            }
                         }
-                    }
-                    Some(VirtualKeyCode::S) => {
-                        game.movement[1] = if input.state == ElementState::Pressed {
-                            -1.0
-                        } else {
-                            0.0f32.max(game.movement[1])
+                        Some(VirtualKeyCode::S) => {
+                            game.movement[1] = if input.state == ElementState::Pressed {
+                                -1.0
+                            } else {
+                                0.0f32.max(game.movement[1])
+                            }
                         }
-                    }
-                    Some(VirtualKeyCode::D) => {
-                        game.movement[0] = if input.state == ElementState::Pressed {
-                            1.0
-                        } else {
-                            0.0f32.min(game.movement[0])
+                        Some(VirtualKeyCode::D) => {
+                            game.movement[0] = if input.state == ElementState::Pressed {
+                                1.0
+                            } else {
+                                0.0f32.min(game.movement[0])
+                            }
                         }
-                    }
+                        _ => return,
+                    },
                     _ => return,
                 },
-                _ => return,
-            },
-            Event::MainEventsCleared => {
-                let delta = previous_frame_time.elapsed();
-                previous_frame_time = Instant::now();
-                update(delta, &mut game);
+                Event::MainEventsCleared => {
+                    let delta = previous_frame_time.elapsed();
+                    previous_frame_time = Instant::now();
+                    update(delta, &mut game);
 
-                todo!("display.gl_window().window().request_redraw();");
+                    todo!("display.gl_window().window().request_redraw();");
+                }
+                Event::RedrawRequested(..) => {
+                    todo!("render::render(&display, &mut render_state, &game);");
+                }
+                _ => return,
             }
-            Event::RedrawRequested(..) => {
-                todo!("render::render(&display, &mut render_state, &game);");
-            }
-            _ => return,
         }
     });
 }

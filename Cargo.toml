@@ -15,9 +15,7 @@ debug = true
 panic = "unwind"
 
 [dependencies]
-winit = "0.22"
-raw-window-handle = "0.3" # zzzz
-winapi = "0.3" # zzzz
+glfw = "0.37"
 gl = "0.14"
 stb_image = "0.2"
 glam = "0.8"
