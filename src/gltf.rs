@@ -1,4 +1,3 @@
-use glium::{Display, VertexBuffer, IndexBuffer, index::PrimitiveType};
 use crate::*;
 use glam::{Vec3, Mat4, Quat};
 use serde::Deserialize;
@@ -102,7 +101,7 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut TextureRepository) -> Option<Vec<render::Mesh>> {
+pub fn load_gltf(file_name: &str, texture_repository: &mut TextureRepository) -> Option<Vec<render::Mesh>> {
     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name).ok()?).ok()?;
 
     let gltf_base_folder = file_name.rfind('/')
@@ -230,10 +229,11 @@ pub fn load_gltf(display: &Display, file_name: &str, texture_repository: &mut Te
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
 
-            let vertices = VertexBuffer::new(display, &vertices).unwrap();
-            let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
-            let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            meshes.push(render::Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
+            todo!();
+            // let vertices = VertexBuffer::new(display, &vertices).unwrap();
+            // let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
+            // let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
+            // meshes.push(render::Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
         }
     }
 

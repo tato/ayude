@@ -1,5 +1,5 @@
-use std::{rc::Rc, io::Read, sync::mpsc};
-use futures::task::SpawnExt;
+use crate::*;
+use std::{io::Read, sync::mpsc};
 
 pub type TextureId = usize;
 
@@ -15,70 +15,73 @@ pub struct TextureRepository {
     image_loaded_sender: mpsc::Sender<ImageLoadedMessage>,
     image_loaded_receiver: mpsc::Receiver<ImageLoadedMessage>,
 
-    textures: Vec<Option<glium::Texture2d>>,
-    placeholder: glium::Texture2d,
+    textures: Vec<Option<u32>>,
+    placeholder: u32,
 }
 
 impl TextureRepository {
-    pub fn new(display: &glium::Display) -> Self {
+    pub fn new() -> Self {
 
         let executor = futures::executor::ThreadPool::new().unwrap();
         let (image_loaded_sender, image_loaded_receiver) = mpsc::channel();
 
         let textures = vec![ ];
-        let placeholder = {
+        let placeholder = unsafe {
             let (bytes, width, height) = futures::executor::block_on(load_texture_from_image_in_memory(include_bytes!("placeholder.png"))).unwrap();
-            let raw_image = glium::texture::RawImage2d::from_raw_rgba(bytes, (width, height));
-            glium::Texture2d::new(display, raw_image).ok().unwrap()
+            opengl::texture_from_data(&bytes, width as i32, height as i32)
         };
 
         Self{ executor, image_loaded_sender, image_loaded_receiver, textures, placeholder }
     }
-    pub fn _get(&self, id: TextureId) -> &glium::Texture2d {
-        &self.textures[id].as_ref().unwrap_or(&self.placeholder)
+
+    pub fn _get(&self, id: TextureId) -> &u32 {
+        self.textures[id].as_ref().unwrap_or(&self.placeholder)
     }
 
-    pub fn get_or_placeholder(&self, maybe_id: Option<TextureId>) -> &glium::Texture2d {
-        match maybe_id {
-            None => &self.placeholder,
-            Some(id) => &self.textures[id].as_ref().unwrap_or(&self.placeholder),
-        }
+    pub fn get_or_placeholder(&self, maybe_id: Option<TextureId>) -> &i32 /*glium::Texture2d*/ {
+        // match maybe_id {
+        //     None => &self.placeholder,
+        //     Some(id) => &self.textures[id].as_ref().unwrap_or(&self.placeholder),
+        // }
+        todo!()
     }
 
-    pub fn _load_from_bytes(&mut self, source: Vec<u8>) -> TextureId {
-        let result = self.textures.len();
-        self.textures.push(None);
+    // pub fn _load_from_bytes(&mut self, source: Vec<u8>) -> TextureId {
+    //     let result = self.textures.len();
+    //     self.textures.push(None);
         
-        let image_loaded_sender = self.image_loaded_sender.clone();
-        self.executor.spawn_ok(async move {
-            if let Some((bytes, width, height)) = load_texture_from_image_in_memory(&source).await {
-                image_loaded_sender.send(ImageLoadedMessage{ id: result, bytes, width, height }).unwrap();
-            }
-        });
+    //     let image_loaded_sender = self.image_loaded_sender.clone();
+    //     self.executor.spawn_ok(async move {
+    //         if let Some((bytes, width, height)) = load_texture_from_image_in_memory(&source).await {
+    //             image_loaded_sender.send(ImageLoadedMessage{ id: result, bytes, width, height }).unwrap();
+    //         }
+    //     });
 
-        result
-    }
+    //     result
+    // }
 
     pub fn load_from_file_name(&mut self, file_name: String) -> TextureId {
-        let result = self.textures.len();
-        self.textures.push(None);
+        // let result = self.textures.len();
+        // self.textures.push(None);
 
-        let image_loaded_sender = self.image_loaded_sender.clone();
-        self.executor.spawn_ok(async move {
-            if let Some((bytes, width, height)) = load_texture_from_file_name(file_name).await {
-                image_loaded_sender.send(ImageLoadedMessage{ id: result, bytes, width, height }).unwrap();
-            }
-        });
+        // let image_loaded_sender = self.image_loaded_sender.clone();
+        // self.executor.spawn_ok(async move {
+        //     if let Some((bytes, width, height)) = load_texture_from_file_name(file_name).await {
+        //         image_loaded_sender.send(ImageLoadedMessage{ id: result, bytes, width, height }).unwrap();
+        //     }
+        // });
 
-        result
+        // result
+        todo!()
     }
 
-    pub fn poll_textures(&mut self, display: &glium::Display) {
-        if let Ok(message) = self.image_loaded_receiver.try_recv() {
-            let raw_image = glium::texture::RawImage2d::from_raw_rgba(message.bytes, (message.width, message.height));
-            let texture = glium::Texture2d::new(display, raw_image).ok();
-            self.textures[message.id] = texture;
-        }
+    pub fn poll_textures(&mut self, display: &i32 /*glium::Display*/) {
+        // if let Ok(message) = self.image_loaded_receiver.try_recv() {
+        //     let raw_image = glium::texture::RawImage2d::from_raw_rgba(message.bytes, (message.width, message.height));
+        //     let texture = glium::Texture2d::new(display, raw_image).ok();
+        //     self.textures[message.id] = texture;
+        // }
+        todo!()
     }
 }
 

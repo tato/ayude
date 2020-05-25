@@ -1,5 +1,4 @@
 
-use glium::{implement_vertex, Display, VertexBuffer, Program, Surface, uniform, IndexBuffer};
 use crate::{GameState, texture_repository::TextureRepository};
 use std::rc::Rc;
 
@@ -9,11 +8,10 @@ pub struct Vertex {
     pub normal: [f32; 3],
     pub uv: [f32; 2],
 }
-implement_vertex!(Vertex, position, normal, uv);
 
 pub struct Mesh {
-    pub vertices: VertexBuffer<Vertex>,
-    pub indices: IndexBuffer<u16>,
+    // todo! pub vertices: VertexBuffer<Vertex>,
+    // todo! pub indices: IndexBuffer<u16>,
     pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
     pub diffuse: Option<crate::texture_repository::TextureId>,
     pub normal: Option<crate::texture_repository::TextureId>,
@@ -56,104 +54,93 @@ fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f3
 
 pub struct RenderState {
     texture_repository: TextureRepository,
-
-    shape: VertexBuffer<Vertex>,
-    program: Program,
-
+    program: i32,
     sample_scene: Vec<Mesh>,
 }
 
 impl RenderState {
-    pub fn new(display: &Display) -> RenderState {
-        let mut texture_repository = TextureRepository::new(display);
-    
-        let shape = VertexBuffer::new(display, &[
-            Vertex { position: [-1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 1.0] },
-            Vertex { position: [ 1.0,  1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 1.0] },
-            Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [0.0, 0.0] },
-            Vertex { position: [ 1.0, -1.0, 0.0], normal: [0.0, 0.0, -1.0], uv: [1.0, 0.0] },
-        ]).unwrap();
+    pub fn new() -> RenderState {
+        let mut texture_repository = TextureRepository::new();
     
         static VERTEX_SOURCE: &str = include_str!("vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("fragment.glsl");
     
-        let program = Program::from_source(display, VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();
+        let program = todo!("Program::from_source(display, VERTEX_SOURCE, FRAGMENT_SOURCE, None).unwrap();");
     
-
-        let sample_scene = crate::gltf::load_gltf(&display, "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf", &mut texture_repository).unwrap();
+        let sample_scene = crate::gltf::load_gltf("samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf", &mut texture_repository).unwrap();
     
-        Self{ texture_repository, shape, program, sample_scene }
+        Self{ texture_repository, program, sample_scene }
     }
 }
 
-pub fn render(display: &Display, state: &mut RenderState, game: &GameState) {
-    state.texture_repository.poll_textures(display);
+pub fn render(display: &i32 /*Display*/, state: &mut RenderState, game: &GameState) {
+    // state.texture_repository.poll_textures(display);
 
-    let mut target = display.draw();
-    target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
+    // let mut target = display.draw();
+    // target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
-    let perspective = {
-        let (width, height) = target.get_dimensions();
-        let aspect_ratio = height as f32 / width as f32;
+    // let perspective = {
+    //     let (width, height) = target.get_dimensions();
+    //     let aspect_ratio = height as f32 / width as f32;
     
-        let fov: f32 = 3.141592 / 3.0;
-        let zfar = 1024.0;
-        let znear = 0.1;
+    //     let fov: f32 = 3.141592 / 3.0;
+    //     let zfar = 1024.0;
+    //     let znear = 0.1;
     
-        let f = 1.0 / (fov / 2.0).tan();
+    //     let f = 1.0 / (fov / 2.0).tan();
     
-        [
-            [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
-            [         0.0         ,     f ,              0.0              ,   0.0],
-            [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
-            [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0],
-        ] 
-    };
+    //     [
+    //         [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
+    //         [         0.0         ,     f ,              0.0              ,   0.0],
+    //         [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
+    //         [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0],
+    //     ] 
+    // };
 
-    let camera_direction = [
-        game.camera_yaw.cos() * game.camera_pitch.cos(),
-        game.camera_yaw.sin() * game.camera_pitch.cos(),
-        game.camera_pitch.sin(),
-    ];
-    let view = view_matrix(&game.camera_position.into(), &camera_direction, &[0.0, 0.0, 1.0]);
+    // let camera_direction = [
+    //     game.camera_yaw.cos() * game.camera_pitch.cos(),
+    //     game.camera_yaw.sin() * game.camera_pitch.cos(),
+    //     game.camera_pitch.sin(),
+    // ];
+    // let view = view_matrix(&game.camera_position.into(), &camera_direction, &[0.0, 0.0, 1.0]);
 
-    for mesh in &state.sample_scene {
-        // let scale = Matrix4::from_scale(100.0);
-        // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
-        // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
-        // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
+    // for mesh in &state.sample_scene {
+    //     // let scale = Matrix4::from_scale(100.0);
+    //     // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
+    //     // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
+    //     // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
-        let model = mesh.transform;
+    //     let model = mesh.transform;
 
 
-        let diffuse_texture = state.texture_repository.get_or_placeholder(mesh.diffuse);
-        let normal_texture = state.texture_repository.get_or_placeholder(mesh.normal);
+    //     let diffuse_texture = state.texture_repository.get_or_placeholder(mesh.diffuse);
+    //     let normal_texture = state.texture_repository.get_or_placeholder(mesh.normal);
         
-        let uniforms = uniform! {
-            perspective: perspective,
-            view: view,
-            model: model,
-            diffuse_texture: diffuse_texture,
-            normal_texture: normal_texture,
-            has_diffuse_texture: mesh.diffuse.is_some(),
-            has_normal_texture: mesh.normal.is_some(),
-            base_diffuse_color: mesh.base_diffuse_color,
-            u_light_direction: [-1.0, 0.4, 0.9f32],
-        };
+    //     let uniforms = uniform! {
+    //         perspective: perspective,
+    //         view: view,
+    //         model: model,
+    //         diffuse_texture: diffuse_texture,
+    //         normal_texture: normal_texture,
+    //         has_diffuse_texture: mesh.diffuse.is_some(),
+    //         has_normal_texture: mesh.normal.is_some(),
+    //         base_diffuse_color: mesh.base_diffuse_color,
+    //         u_light_direction: [-1.0, 0.4, 0.9f32],
+    //     };
     
-        let params = glium::DrawParameters {
-            depth: glium::Depth {
-                test: glium::draw_parameters::DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            //backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
-            ..Default::default()
-        };
+    //     let params = glium::DrawParameters {
+    //         depth: glium::Depth {
+    //             test: glium::draw_parameters::DepthTest::IfLess,
+    //             write: true,
+    //             ..Default::default()
+    //         },
+    //         //backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
+    //         ..Default::default()
+    //     };
     
-        // target.draw(&state.shape, &NoIndices(PrimitiveType::TriangleStrip), &state.program, &uniforms, &params).unwrap();
-        target.draw(&mesh.vertices, &mesh.indices, &state.program, &uniforms, &params).unwrap();
-    }
+    //     // target.draw(&state.shape, &NoIndices(PrimitiveType::TriangleStrip), &state.program, &uniforms, &params).unwrap();
+    //     target.draw(&mesh.vertices, &mesh.indices, &state.program, &uniforms, &params).unwrap();
+    // }
     
-    target.finish().unwrap();
+    // target.finish().unwrap();
 }
