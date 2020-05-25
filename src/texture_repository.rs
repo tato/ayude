@@ -26,7 +26,7 @@ impl TextureRepository {
         let (image_loaded_sender, image_loaded_receiver) = mpsc::channel();
 
         let textures = vec![ ];
-        let placeholder = unsafe {
+        let placeholder = {
             let (bytes, width, height) = futures::executor::block_on(load_texture_from_image_in_memory(include_bytes!("placeholder.png"))).unwrap();
             opengl::texture_from_data(&bytes, width as i32, height as i32)
         };

@@ -77,6 +77,7 @@ fn get_get_proc_address(window: &winit::window::Window) -> Option<GetProcAddress
                     unsafe {
                         let c = format!("{}{}", symbol, "\0");
                         let ptr = wglGetProcAddress(std::mem::transmute(c.as_bytes().as_ptr())) as *const std::os::raw::c_void;
+                        println!("for {}, the result was {:?}", symbol, ptr);
                         ptr
                     }
                 }
@@ -105,6 +106,7 @@ fn get_get_proc_address(window: &winit::window::Window) -> Option<GetProcAddress
                 let wglSwapIntervalEXT: extern fn(i32) -> bool = std::mem::transmute(get_proc_address("wglSwapIntervalEXT"));
                 
                 gl::load_with(get_proc_address);
+                //gl::TexParameteri::load_with(get_proc_address);
     
                 (wglSwapIntervalEXT)(1);
         
@@ -126,7 +128,7 @@ fn main() {
     window.set_cursor_grab(true).unwrap();
     window.set_cursor_visible(false);
 
-    let mut render_state = render::RenderState::new(todo!());
+    let mut render_state = render::RenderState::new();
 
     let mut game = GameState {
         camera_position: [2.0, -1.0, 1.0].into(),
