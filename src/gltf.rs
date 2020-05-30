@@ -3,7 +3,6 @@ use glam::{Vec3, Mat4, Quat};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::Read;
-use texture_repository::TextureRepository;
 
 #[derive(Debug, Deserialize)]
 struct Document {
@@ -101,7 +100,7 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(file_name: &str, texture_repository: &mut TextureRepository) -> Option<Vec<render::Mesh>> {
+pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name).ok()?).ok()?;
 
     let gltf_base_folder = file_name.rfind('/')
@@ -195,12 +194,12 @@ pub fn load_gltf(file_name: &str, texture_repository: &mut TextureRepository) ->
                 "there isn't the same amount of positions, normals and uvs.\npositions: {}, normals: {}, uvs: {}",
                 positions.len(), normals.len(), uvs.len());
 
-            let mut vertices = Vec::new();
+            // let mut vertices = Vec::new();
             for i in 0..positions.len() {
                 let position = positions[i];
                 let normal = normals[i];
                 let uv = uvs[i];
-                vertices.push(render::Vertex{ position, normal, uv });
+                todo!(""); // vertices.push(render::Vertex{ position, normal, uv });
             }
 
             let indices: &[u16] = {
@@ -219,12 +218,12 @@ pub fn load_gltf(file_name: &str, texture_repository: &mut TextureRepository) ->
             let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().map(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                texture_repository.load_from_file_name(image_file_name)
+                todo!("texture_repository.load_from_file_name(image_file_name)")
             });
             let normal = material.normalTexture.as_ref().map(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                texture_repository.load_from_file_name(image_file_name)
+                todo!("texture_repository.load_from_file_name(image_file_name)")
             });
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
