@@ -53,6 +53,7 @@ fn main() {
     ).unwrap();
 
     window.set_key_polling(true);
+    window.set_cursor_pos_polling(true);
     window.set_cursor_mode(glfw::CursorMode::Disabled);
     window.make_current();
 
@@ -78,7 +79,6 @@ fn main() {
                 },
                 glfw::WindowEvent::CursorPos(x, y) => {
                     let delta = (x, y);
-                    println!("cursor is ({}, {})", x, y);
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
