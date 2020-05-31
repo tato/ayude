@@ -100,8 +100,8 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
-    let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name).ok()?).ok()?;
+pub fn load_gltf(file_name: &str) -> Result<Vec<render::Mesh>, crate::AyudeError> {
+    let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 
     let gltf_base_folder = file_name.rfind('/')
         .map(|idx| &file_name[0..idx+1])
@@ -109,9 +109,9 @@ pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
 
     let buffers: Vec<Vec<u8>> = document.buffers.iter().map(|b| {
         let mut result = Vec::new();
-        std::fs::File::open(format!("{}{}", gltf_base_folder, b.uri)).ok()?.read_to_end(&mut result).ok()?;
-        Some(result)
-    }).collect::<Option<_>>()?;
+        std::fs::File::open(format!("{}{}", gltf_base_folder, b.uri))?.read_to_end(&mut result)?;
+        Ok(result)
+    }).collect::<Result<_, crate::AyudeError>>()?;
 
     let mut meshes = Vec::new();
     
@@ -130,7 +130,7 @@ pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
     node_queue.extend(default_scene_nodes);
 
     while !node_queue.is_empty() {
-        let node = node_queue.pop()?;
+        let node = node_queue.pop().unwrap();
         let parent_transform = transform_queue.pop().unwrap_or(Mat4::identity());
 
         let node_local_transform = {
@@ -190,18 +190,6 @@ pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
                 }
             };
 
-            debug_assert!(positions.len() == normals.len() && positions.len() == uvs.len(),
-                "there isn't the same amount of positions, normals and uvs.\npositions: {}, normals: {}, uvs: {}",
-                positions.len(), normals.len(), uvs.len());
-
-            // let mut vertices = Vec::new();
-            for i in 0..positions.len() {
-                let position = positions[i];
-                let normal = normals[i];
-                let uv = uvs[i];
-                todo!(""); // vertices.push(render::Vertex{ position, normal, uv });
-            }
-
             let indices: &[u16] = {
                 let accessor = &document.accessors[primitive.indices];
                 debug_assert!(accessor.componentType == 5123);
@@ -215,27 +203,27 @@ pub fn load_gltf(file_name: &str) -> Option<Vec<render::Mesh>> {
             };
 
             let material = &document.materials[primitive.material];
-            let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().map(|info| {
+            let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().and_then(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                todo!("texture_repository.load_from_file_name(image_file_name)")
+                graphics::Texture::from_file_name(&image_file_name)
             });
-            let normal = material.normalTexture.as_ref().map(|info| {
+            let normal = material.normalTexture.as_ref().and_then(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                todo!("texture_repository.load_from_file_name(image_file_name)")
+                graphics::Texture::from_file_name(&image_file_name)
             });
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
 
-            todo!();
+            let geometry = graphics::Geometry::new(positions, normals, uvs, indices);
             // let vertices = VertexBuffer::new(display, &vertices).unwrap();
             // let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
-            // let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            // meshes.push(render::Mesh{ vertices, indices, transform, diffuse, normal, base_diffuse_color });
+            let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
+            meshes.push(render::Mesh{ geometry, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
-    Some(meshes)
+    Ok(meshes)
 }
 

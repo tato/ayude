@@ -6,6 +6,9 @@ use std::{
 };
 use glfw::Context;
 
+mod error;
+use error::AyudeError;
+
 mod graphics;
 #[allow(non_snake_case)]
 mod gltf;
@@ -44,7 +47,7 @@ fn main() {
     //glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGlEs));
 
     let (mut window, mut events) = glfw.create_window(
-        300, 300,
+        800, 600,
         "a.yude",
         glfw::WindowMode::Windowed
     ).unwrap();
@@ -52,11 +55,6 @@ fn main() {
     window.set_key_polling(true);
     window.set_cursor_mode(glfw::CursorMode::Disabled);
     window.make_current();
-
-    if !glfw.supports_raw_motion() {
-        panic!("doesn't support raw motion :(");
-    }
-    // unsafe { glfw::ffi::glfwSetInputMode(window); } :(
 
     gl::load_with(|s| window.get_proc_address(s));
     let mut render_state = render::RenderState::new();
@@ -80,6 +78,7 @@ fn main() {
                 },
                 glfw::WindowEvent::CursorPos(x, y) => {
                     let delta = (x, y);
+                    println!("cursor is ({}, {})", x, y);
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
@@ -130,7 +129,7 @@ fn main() {
         previous_frame_time = Instant::now();
         update(delta, &mut game);
 
-        todo!("display.gl_window().window().request_redraw();");
-        todo!("render::render(&display, &mut render_state, &game);");
+        render_state.render(&game, window.get_framebuffer_size());
+        window.swap_buffers();
     }
 }

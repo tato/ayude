@@ -1,12 +1,14 @@
-use crate::graphics::GraphicsError;
+use crate::error::AyudeError;
+use std::collections::HashMap;
 
-#[derive(Debug)]
 pub struct Shader {
     id: u32,
+    // todo! uniform_locations: HashMap<&'static str, i32>,
+    uniforms: HashMap<&'static str, Box<dyn Uniform>>,
 }
 
 impl Shader {
-    pub fn from_sources(vertex: &str, fragment: &str) -> Result<Shader, GraphicsError> {
+    pub fn from_sources(vertex: &str, fragment: &str) -> Result<Shader, AyudeError> {
         let vertex_id = create_single_shader_from_source(vertex.as_bytes(), gl::VERTEX_SHADER)?;
         let fragment_id = create_single_shader_from_source(fragment.as_bytes(), gl::FRAGMENT_SHADER)?;
 
@@ -40,17 +42,6 @@ impl Shader {
                     Err("Program didn't compile and it didn't provide an info log".into())
                 }
             } else {
-                /*
-                glGetProgramiv(program, GL_ACTIVE_UNIFORMS, &count);
-                printf("Active Uniforms: %d\n", count);
-
-                for (i = 0; i < count; i++)
-                {
-                    glGetActiveUniform(program, (GLuint)i, bufSize, &length, &size, &type, name);
-
-                    printf("Uniform #%d Type: %u Name: %s\n", i, type, name);
-                }
-                */
                 let mut count = 0;
                 gl::GetProgramiv(program_id, gl::ACTIVE_UNIFORMS, &mut count);
 
@@ -64,7 +55,22 @@ impl Shader {
                     let name = std::str::from_utf8_unchecked(&buffer[0..result_length as usize]);
                     println!("{}: {} ({})", name, result_type, result_size);
                 }
-                Ok(Shader { id: program_id })
+                Ok(Shader { id: program_id, uniforms: HashMap::new(), })
+            }
+        }
+    }
+
+    pub fn uniform(&mut self, name: &'static str, value: impl Uniform + 'static) {
+        self.uniforms.insert(name, Box::new(value));
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::UseProgram(self.id);
+            let mut texture_offset = 0;
+            for (name, value) in &self.uniforms {
+                let location = gl::GetUniformLocation(self.id, format!("{}\0", name).as_ptr() as *const i8);
+                value.bind(location, &mut texture_offset);
             }
         }
     }
@@ -76,7 +82,45 @@ impl Drop for Shader {
     }
 }
 
-fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u32, GraphicsError> {
+
+
+
+pub trait Uniform {
+    unsafe fn bind(&self, location: i32, texture_offset: &mut u32);
+}
+impl Uniform for bool {
+    unsafe fn bind(&self, location: i32, _: &mut u32) {
+        gl::Uniform1i(location, *self as i32);
+    }
+}
+impl Uniform for [f32; 3] {
+    unsafe fn bind(&self, location: i32, _: &mut u32) {
+        gl::Uniform3f(location, self[0], self[1], self[2]);
+    }
+}
+impl Uniform for [f32; 4] {
+    unsafe fn bind(&self, location: i32, _: &mut u32) {
+        gl::Uniform4f(location, self[0], self[1], self[2], self[3]);
+    }
+}
+impl Uniform for [[f32; 4]; 4] {
+    unsafe fn bind(&self, location: i32, _: &mut u32) {
+        gl::UniformMatrix4fv(location, 1, gl::FALSE, self.as_ptr() as *const f32);
+    }
+}
+impl Uniform for crate::graphics::Texture {
+    unsafe fn bind(&self, location: i32, texture_offset: &mut u32) {
+        gl::ActiveTexture(gl::TEXTURE0 + *texture_offset);
+        gl::BindTexture(gl::TEXTURE_2D, *self.id);
+        gl::Uniform1i(location, *texture_offset as i32);
+        *texture_offset += 1;
+    }
+}
+
+
+
+
+fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u32, AyudeError> {
     unsafe {
         let shader_id = gl::CreateShader(shader_type);
         gl::ShaderSource(shader_id, 1,  &source.as_ptr() as *const *const u8 as *const *const i8, &source.len() as *const usize as *const i32);

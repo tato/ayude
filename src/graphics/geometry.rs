@@ -1,6 +1,6 @@
-#[derive(Debug)]
 pub struct Geometry {
-    vao: u32,
+    pub vao: u32,
+    pub element_count: i32,
 }
 
 impl Geometry {
@@ -64,29 +64,29 @@ impl Geometry {
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
-            Geometry{ vao }
+            Geometry{ vao, element_count: indices.len() as i32 }
         }
     }
 }
 
-impl Drop for Geometry {
-    fn drop(&mut self) {
-        unsafe {
-            // glBindVertexArray(Mesh->MeshID);
-            //
-            // int32 BufferIDs[4];
-            // glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs);
-            // glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+1);
-            // glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+2);
-            // glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,                BufferIDs+3);
-            // glDeleteBuffers(4, (uint32 *)BufferIDs);
-            //
-            // glBindVertexArray(0);
+// todo!
+// impl Drop for Geometry {
+//     fn drop(&mut self) {
+//         unsafe {
+//             // glBindVertexArray(Mesh->MeshID);
+//             //
+//             // int32 BufferIDs[4];
+//             // glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs);
+//             // glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+1);
+//             // glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+2);
+//             // glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,                BufferIDs+3);
+//             // glDeleteBuffers(4, (uint32 *)BufferIDs);
+//             //
+//             // glBindVertexArray(0);
 
-            gl::BindVertexArray(self.vao);
+//             gl::BindVertexArray(self.vao);
 
-            gl::BindVertexArray(0);
-            todo!();
-        }
-    }
-}
+//             gl::BindVertexArray(0);
+//         }
+//     }
+// }

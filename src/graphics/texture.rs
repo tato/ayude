@@ -1,13 +1,13 @@
 use std::{io::Read, sync::mpsc, rc};
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Texture {
-    id: u32,
+    pub id: rc::Rc<u32>,
 }
 
 impl Texture {
     pub fn empty() -> Self {
-        Texture { id: 0 } // todo! this is debug only!!!!
+        Texture{ id: 0.into() } // todo! this is debug only!!!!
     }
     pub fn from_rgba(rgba: &[u8], width: i32, height: i32) -> Self {
         let mut id = 0u32;
@@ -24,9 +24,22 @@ impl Texture {
             gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, width as i32, height as i32, 0, gl::RGBA, gl::UNSIGNED_BYTE, rgba.as_ptr() as *const std::ffi::c_void);
         }
 
-        Texture { id }
+        Texture{ id: id.into() }
+    }
+    pub fn from_file_name(file_name: &str) -> Option<Self> {
+        let file_name = "src/resources/placeholder.png";
+        let (bytes, width, height) = futures::executor::block_on(load_texture_from_file_name(file_name))?;
+        Some(Self::from_rgba(&bytes, width as i32, height as i32))
     }
 }
+
+// impl Drop for Texture {
+//     fn drop(&mut self) {
+//         if 1 == rc::Rc::strong_count(&self.id) {
+//             unsafe { gl::DeleteTextures(1, &self.id); }
+//         }
+//     }
+// }
 
 // pub struct TextureRepository {
 //     executor: futures::executor::ThreadPool,
@@ -100,42 +113,43 @@ impl Texture {
 //     }
 // }
 //
-// async fn load_texture_from_file_name(file_name: String) -> Option<(Vec<u8>, u32, u32)> {
-//     let source = {
-//         let mut source = Vec::new();
-//         std::fs::File::open(&file_name).ok()?.read_to_end(&mut source).ok()?;
-//         source
-//     };
-//     load_texture_from_image_in_memory(&source).await
-// }
-//
-// async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
-//
-//     let mut width: i32 = 0;
-//     let mut height: i32 = 0;
-//     let mut channels: i32 = 0;
-//
-//     unsafe {
-//         let bytes = stb_image::stb_image::bindgen::stbi_load_from_memory(
-//             input.as_ptr(),
-//             input.len() as i32,
-//             &mut width as *mut i32,
-//             &mut height as *mut i32,
-//             &mut channels as *mut i32,
-//             4
-//         );
-//
-//         if bytes.is_null() {
-//             let _reason = std::ffi::CStr::from_ptr(stb_image::stb_image::bindgen::stbi_failure_reason());
-//             None
-//         } else {
-//             let bytes_length = (width*height*4) as usize;
-//             // i think `Vec::from_raw_parts` could leak a little bit here (`malloc` metadata or something)
-//             let owned = Vec::from_raw_parts(bytes, bytes_length, bytes_length);
-//             Some((owned, width as u32, height as u32))
-//         }
-//     }
-// }
+
+async fn load_texture_from_file_name(file_name: &str) -> Option<(Vec<u8>, u32, u32)> {
+    let source = {
+        let mut source = Vec::new();
+        std::fs::File::open(file_name).ok()?.read_to_end(&mut source).ok()?;
+        source
+    };
+    load_texture_from_image_in_memory(&source).await
+}
+
+async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+
+    let mut width: i32 = 0;
+    let mut height: i32 = 0;
+    let mut channels: i32 = 0;
+
+    unsafe {
+        let bytes = stb_image::stb_image::bindgen::stbi_load_from_memory(
+            input.as_ptr(),
+            input.len() as i32,
+            &mut width as *mut i32,
+            &mut height as *mut i32,
+            &mut channels as *mut i32,
+            4
+        );
+
+        if bytes.is_null() {
+            let _reason = std::ffi::CStr::from_ptr(stb_image::stb_image::bindgen::stbi_failure_reason());
+            None
+        } else {
+            let bytes_length = (width*height*4) as usize;
+            // i think `Vec::from_raw_parts` could leak a little bit here (`malloc` metadata or something)
+            let owned = Vec::from_raw_parts(bytes, bytes_length, bytes_length);
+            Some((owned, width as u32, height as u32))
+        }
+    }
+}
 //
 // fn create_texture_from_data(rgba: &[u8], width: i32, height: i32) -> u32 {
 //     let mut texture_id = 0u32;
