@@ -57,6 +57,8 @@ fn main() {
     window.set_cursor_mode(glfw::CursorMode::Disabled);
     window.make_current();
 
+    let mut previous_cursor_pos = (0.0, 0.0);
+
     gl::load_with(|s| window.get_proc_address(s));
     let mut render_state = render::RenderState::new();
 
@@ -78,7 +80,9 @@ fn main() {
                     break 'running;
                 },
                 glfw::WindowEvent::CursorPos(x, y) => {
-                    let delta = (x, y);
+                    let delta = (x - previous_cursor_pos.0, y - previous_cursor_pos.1);
+                    previous_cursor_pos = (x, y);
+                    
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
@@ -93,28 +97,28 @@ fn main() {
                 },
                 glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => match key {
                     glfw::Key::W => {
-                        game.movement[1] = if action == glfw::Action::Press {
+                        game.movement[1] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
                             1.0
                         } else {
                             0.0f32.min(game.movement[1])
                         }
                     }
                     glfw::Key::A => {
-                        game.movement[0] = if action == glfw::Action::Press {
+                        game.movement[0] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
                             -1.0
                         } else {
                             0.0f32.max(game.movement[0])
                         }
                     }
                     glfw::Key::S => {
-                        game.movement[1] = if action == glfw::Action::Press {
+                        game.movement[1] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
                             -1.0
                         } else {
                             0.0f32.max(game.movement[1])
                         }
                     }
                     glfw::Key::D => {
-                        game.movement[0] = if action == glfw::Action::Press {
+                        game.movement[0] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
                             1.0
                         } else {
                             0.0f32.min(game.movement[0])
