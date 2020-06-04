@@ -1,9 +1,10 @@
 use crate::*;
 use glam::{Vec3, Mat4, Quat};
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::io::Read;
 
+// todo! accurate deserialize struct. maybe copy from gltf lib.
 #[derive(Debug, Deserialize)]
 struct Document {
     asset: Asset,
@@ -100,7 +101,7 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(file_name: &str) -> Result<Vec<crate::Mesh>, crate::AyudeError> {
+pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 
     let gltf_base_folder = file_name.rfind('/')
@@ -111,9 +112,12 @@ pub fn load_gltf(file_name: &str) -> Result<Vec<crate::Mesh>, crate::AyudeError>
         let mut result = Vec::new();
         std::fs::File::open(format!("{}{}", gltf_base_folder, b.uri))?.read_to_end(&mut result)?;
         Ok(result)
-    }).collect::<Result<_, crate::AyudeError>>()?;
+    }).collect::<Result<_, AyudeError>>()?;
 
-    let mut meshes = Vec::new();
+    let mut images = Vec::new();
+    let mut image_indices = std::collections::HashMap::new();
+
+    let mut nodes = Vec::new();
     
     let y_up_to_z_up_transform = Mat4::from_cols_array(&[
         0.0, 1.0, 0.0, 0.0,
@@ -206,24 +210,66 @@ pub fn load_gltf(file_name: &str) -> Result<Vec<crate::Mesh>, crate::AyudeError>
             let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().and_then(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                graphics::Texture::from_file_name(&image_file_name)
+                match image_indices.get(&image_file_name) { // todo! duplication
+                    Some(index) => Some(*index),
+                    None => {
+                        let image = futures::executor::block_on(graphics::texture::load_texture_from_file_name(&image_file_name));
+                        image.map(|image| {
+                            images.push(image);
+                            let index = images.len() - 1;
+                            image_indices.insert(image_file_name, index);
+                            index
+                        })
+                    }
+                }
             });
             let normal = material.normalTexture.as_ref().and_then(|info| {
                 let image = &document.images[document.textures[info.index].source];
                 let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                graphics::Texture::from_file_name(&image_file_name)
+                match image_indices.get(&image_file_name) { // todo! duplication
+                    Some(index) => Some(*index),
+                    None => {
+                        let image = futures::executor::block_on(graphics::texture::load_texture_from_file_name(&image_file_name));
+                        image.map(|image| {
+                            images.push(image);
+                            let index = images.len() - 1;
+                            image_indices.insert(image_file_name, index);
+                            index
+                        })
+                    }
+                }
             });
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
 
-            let geometry = graphics::Geometry::new(positions, normals, uvs, indices);
-            // let vertices = VertexBuffer::new(display, &vertices).unwrap();
-            // let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
+            let geometry_positions = positions.to_vec();
+            let geometry_normals = normals.to_vec();
+            let geometry_uvs = uvs.to_vec();
+            let geometry_indices = indices.to_vec();
             let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            meshes.push(crate::Mesh{ geometry, transform, diffuse, normal, base_diffuse_color });
+            nodes.push(UnloadedSceneNode{ geometry_positions, geometry_normals, geometry_uvs, geometry_indices, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
-    Ok(meshes)
+    Ok(UnloadedScene{ nodes, images })
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct UnloadedSceneNode {
+    pub geometry_positions: Vec<[f32; 3]>,
+    pub geometry_normals: Vec<[f32; 3]>,
+    pub geometry_uvs: Vec<[f32; 2]>,
+    pub geometry_indices: Vec<u16>,
+
+    pub transform: [[f32; 4]; 4],
+
+    pub diffuse: Option<usize>,
+    pub normal: Option<usize>,
+
+    pub base_diffuse_color: [f32; 4],
+}
+#[derive(Serialize, Deserialize)]
+pub struct UnloadedScene {
+    pub nodes: Vec<UnloadedSceneNode>,
+    pub images: Vec<(Vec<u8>, u32, u32)>,
+}

@@ -1,7 +1,7 @@
 mod geometry;
 pub use geometry::Geometry;
 
-mod texture;
+pub mod texture;
 pub use texture::Texture;
 
 mod shader;

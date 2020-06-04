@@ -5,20 +5,48 @@ use std::{
     time::{Duration, Instant},
 };
 use glfw::Context;
+use ayude::*;
 
-mod error;
-use error::AyudeError;
-
-mod graphics;
-#[allow(non_snake_case)]
-mod gltf;
-
-pub struct Mesh {
+pub struct SceneNode {
     pub geometry: graphics::Geometry,
     pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
     pub diffuse: Option<graphics::Texture>,
     pub normal: Option<graphics::Texture>,
     pub base_diffuse_color: [f32; 4],
+}
+
+pub struct Scene {
+    pub nodes: Vec<SceneNode>
+}
+
+impl Scene {
+    fn upload(scene: gltf::UnloadedScene) -> Result<Self, AyudeError> {
+        let mut nodes = Vec::new();
+        let textures = scene.images.iter().map(|(rgba, width, height)| {
+            graphics::Texture::from_rgba(&rgba, *width as i32, *height as i32)
+        }).collect::<Vec<_>>();
+        for unode in scene.nodes {
+            let transform = unode.transform;
+            let base_diffuse_color = unode.base_diffuse_color;
+
+            let geometry = graphics::Geometry::new(
+                &unode.geometry_positions,
+                &unode.geometry_normals,
+                &unode.geometry_uvs,
+                &unode.geometry_indices
+            );
+
+            let diffuse = unode.diffuse.map(|index| {
+                textures[index].clone()
+            });
+            let normal =  unode.normal.map(|index| {
+                textures[index].clone()
+            });
+
+            nodes.push(SceneNode{ geometry, transform, diffuse, normal, base_diffuse_color });
+        }
+        Ok(crate::Scene{ nodes })
+    }
 }
 
 pub struct GameState {
@@ -29,7 +57,7 @@ pub struct GameState {
     movement: [f32; 2], // stores WASD input
     
     shader: graphics::Shader,
-    sample_scene: Vec<Mesh>,
+    sample_scene: Scene,
 }
 
 impl GameState {
@@ -38,7 +66,10 @@ impl GameState {
         static FRAGMENT_SOURCE: &str = include_str!("resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
     
-        let sample_scene = gltf::load_gltf("samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
+        let sample_scene = {
+            let unloaded = gltf::load_gltf("samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
+            Scene::upload(unloaded).unwrap()
+        };
 
         GameState {
             camera_position: [0.0, 0.0, 0.0].into(),
@@ -54,11 +85,10 @@ impl GameState {
 
     fn update_and_render(&mut self, delta: Duration, window_dimensions: (i32, i32)) {
         let mut forward_direction: Vec3 = [
-            (-self.camera_yaw).cos() * (-self.camera_pitch).cos(),
-            (-self.camera_yaw).sin() * (-self.camera_pitch).cos(),
-            (-self.camera_pitch).sin(),
-        ]
-        .into();
+            (-self.camera_yaw).cos() * self.camera_pitch.cos(),
+            (-self.camera_yaw).sin() * self.camera_pitch.cos(),
+            self.camera_pitch.sin(),
+        ].into();
         forward_direction = forward_direction.normalize();
         let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
     
@@ -79,7 +109,7 @@ impl GameState {
 
         let view = glam::Mat4::look_at_rh(self.camera_position, self.camera_position + forward_direction, [0.0, 0.0, 1.0].into());
 
-        for mesh in &self.sample_scene {
+        for mesh in &self.sample_scene.nodes {
             // let scale = Matrix4::from_scale(100.0);
             // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
             // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
@@ -141,6 +171,8 @@ fn main() {
                     let delta = (x - previous_cursor_pos.0, y - previous_cursor_pos.1);
                     previous_cursor_pos = (x, y);
                     
+                    println!("{:?}", delta);
+
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
@@ -148,7 +180,7 @@ fn main() {
                     // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
 
                     let freedom_y = 0.8;
-                    game.camera_pitch += delta.1 as f32 * 0.006;
+                    game.camera_pitch -= delta.1 as f32 * 0.006;
                     game.camera_pitch = game
                         .camera_pitch
                         .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);

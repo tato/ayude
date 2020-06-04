@@ -26,8 +26,7 @@ impl Texture {
 
         Texture{ id: id.into() }
     }
-    pub fn from_file_name(_file_name: &str) -> Option<Self> {
-        let file_name = "src/resources/placeholder.png";
+    pub fn from_file_name(file_name: &str) -> Option<Self> {
         let (bytes, width, height) = futures::executor::block_on(load_texture_from_file_name(file_name))?;
         Some(Self::from_rgba(&bytes, width as i32, height as i32))
     }
@@ -114,16 +113,19 @@ impl Texture {
 // }
 //
 
-async fn load_texture_from_file_name(file_name: &str) -> Option<(Vec<u8>, u32, u32)> {
+pub async fn load_texture_from_file_name(file_name: &str) -> Option<(Vec<u8>, u32, u32)> {
+    let start = std::time::Instant::now();
     let source = {
         let mut source = Vec::new();
         std::fs::File::open(file_name).ok()?.read_to_end(&mut source).ok()?;
         source
     };
-    load_texture_from_image_in_memory(&source).await
+    let result = load_texture_from_image_in_memory(&source).await;
+    println!("{}: {:?}", file_name, start.elapsed());
+    result
 }
 
-async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+pub async fn load_texture_from_image_in_memory(input: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 
     let mut width: i32 = 0;
     let mut height: i32 = 0;

@@ -27,6 +27,11 @@ impl From<serde_json::error::Error> for AyudeError {
         AyudeError{ cause: e.to_string() }
     }
 }
+impl From<bincode::Error> for AyudeError {
+    fn from(e: bincode::Error) -> Self {
+        AyudeError{ cause: e.to_string() }
+    }
+}
 impl From<std::ffi::FromBytesWithNulError> for AyudeError {
     fn from(e: std::ffi::FromBytesWithNulError) -> Self {
         AyudeError{ cause: e.to_string() }
