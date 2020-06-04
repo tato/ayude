@@ -32,6 +32,11 @@ impl From<bincode::Error> for AyudeError {
         AyudeError{ cause: e.to_string() }
     }
 }
+impl From<image::error::ImageError> for AyudeError {
+    fn from(e: image::error::ImageError) -> Self {
+        AyudeError{ cause: e.to_string() }
+    }
+}
 impl From<std::ffi::FromBytesWithNulError> for AyudeError {
     fn from(e: std::ffi::FromBytesWithNulError) -> Self {
         AyudeError{ cause: e.to_string() }

@@ -22,8 +22,8 @@ pub struct Scene {
 impl Scene {
     fn upload(scene: gltf::UnloadedScene) -> Result<Self, AyudeError> {
         let mut nodes = Vec::new();
-        let textures = scene.images.iter().map(|(rgba, width, height)| {
-            graphics::Texture::from_rgba(&rgba, *width as i32, *height as i32)
+        let textures = scene.images.iter().map(|image| {
+            graphics::Texture::from_rgba(&scene.images_byte_buffer[image.offset..image.offset+image.size], image.width as i32, image.height as i32)
         }).collect::<Vec<_>>();
         for unode in scene.nodes {
             let transform = unode.transform;
@@ -170,14 +170,12 @@ fn main() {
                 glfw::WindowEvent::CursorPos(x, y) => {
                     let delta = (x - previous_cursor_pos.0, y - previous_cursor_pos.1);
                     previous_cursor_pos = (x, y);
-                    
-                    println!("{:?}", delta);
 
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
                     }
-                    // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
+                    if game.camera_yaw <= 0.0 { game.camera_yaw += 2.0*PI; }
 
                     let freedom_y = 0.8;
                     game.camera_pitch -= delta.1 as f32 * 0.006;

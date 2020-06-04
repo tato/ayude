@@ -18,9 +18,9 @@ panic = "unwind"
 [dependencies]
 glfw = "0.37"
 gl = "0.14"
-stb_image = "0.2"
+image = { version="0.23", default-features=false, features=["png", "jpeg"] }
 glam = "0.8"
 serde = { version="1.0", features=[ "derive" ] }
+serde_bytes = "0.11"
 serde_json = "1.0"
 bincode = "1.2"
-futures = { version="0.3", default-features=false, features=["thread-pool"] }

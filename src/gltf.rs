@@ -115,7 +115,16 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
     }).collect::<Result<_, AyudeError>>()?;
 
     let mut images = Vec::new();
-    let mut image_indices = std::collections::HashMap::new();
+    let mut images_byte_buffer = Vec::new();
+    for image in &document.images {
+        let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
+        let loaded = image::open(&image_file_name)?.into_rgba();
+        let width = loaded.width();
+        let height = loaded.height();
+        let bytes = image::DynamicImage::ImageRgba8(loaded).to_bytes();
+        images.push(UnloadedImage{ offset: images_byte_buffer.len(), size: bytes.len(), width, height });
+        images_byte_buffer.extend(bytes);
+    }
 
     let mut nodes = Vec::new();
     
@@ -207,37 +216,11 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
             };
 
             let material = &document.materials[primitive.material];
-            let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().and_then(|info| {
-                let image = &document.images[document.textures[info.index].source];
-                let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                match image_indices.get(&image_file_name) { // todo! duplication
-                    Some(index) => Some(*index),
-                    None => {
-                        let image = futures::executor::block_on(graphics::texture::load_texture_from_file_name(&image_file_name));
-                        image.map(|image| {
-                            images.push(image);
-                            let index = images.len() - 1;
-                            image_indices.insert(image_file_name, index);
-                            index
-                        })
-                    }
-                }
+            let diffuse = material.pbrMetallicRoughness.baseColorTexture.as_ref().map(|info| {
+                document.textures[info.index].source
             });
-            let normal = material.normalTexture.as_ref().and_then(|info| {
-                let image = &document.images[document.textures[info.index].source];
-                let image_file_name = format!("{}{}", gltf_base_folder, image.uri);
-                match image_indices.get(&image_file_name) { // todo! duplication
-                    Some(index) => Some(*index),
-                    None => {
-                        let image = futures::executor::block_on(graphics::texture::load_texture_from_file_name(&image_file_name));
-                        image.map(|image| {
-                            images.push(image);
-                            let index = images.len() - 1;
-                            image_indices.insert(image_file_name, index);
-                            index
-                        })
-                    }
-                }
+            let normal = material.normalTexture.as_ref().map(|info| {
+                document.textures[info.index].source
             });
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
@@ -251,7 +234,7 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
         }
     }
 
-    Ok(UnloadedScene{ nodes, images })
+    Ok(UnloadedScene{ nodes, images, images_byte_buffer })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -269,7 +252,16 @@ pub struct UnloadedSceneNode {
     pub base_diffuse_color: [f32; 4],
 }
 #[derive(Serialize, Deserialize)]
+pub struct UnloadedImage {
+    pub offset: usize,
+    pub size: usize,
+    pub width: u32,
+    pub height: u32,
+}
+#[derive(Serialize, Deserialize)]
 pub struct UnloadedScene {
     pub nodes: Vec<UnloadedSceneNode>,
-    pub images: Vec<(Vec<u8>, u32, u32)>,
+    pub images: Vec<UnloadedImage>,
+    #[serde(with = "serde_bytes")]
+    pub images_byte_buffer: Vec<u8>,
 }
