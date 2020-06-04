@@ -8,40 +8,6 @@ pub struct Mesh {
     pub base_diffuse_color: [f32; 4],
 }
 
-fn view_matrix(position: &[f32; 3], direction: &[f32; 3], up: &[f32; 3]) -> [[f32; 4]; 4] {
-    let f = {
-        let f = direction;
-        let len = f[0] * f[0] + f[1] * f[1] + f[2] * f[2];
-        let len = len.sqrt();
-        [f[0] / len, f[1] / len, f[2] / len]
-    };
-
-    let s = [up[1] * f[2] - up[2] * f[1],
-             up[2] * f[0] - up[0] * f[2],
-             up[0] * f[1] - up[1] * f[0]];
-
-    let s_norm = {
-        let len = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
-        let len = len.sqrt();
-        [s[0] / len, s[1] / len, s[2] / len]
-    };
-
-    let u = [f[1] * s_norm[2] - f[2] * s_norm[1],
-             f[2] * s_norm[0] - f[0] * s_norm[2],
-             f[0] * s_norm[1] - f[1] * s_norm[0]];
-
-    let p = [-position[0] * s_norm[0] - position[1] * s_norm[1] - position[2] * s_norm[2],
-             -position[0] * u[0] - position[1] * u[1] - position[2] * u[2],
-             -position[0] * f[0] - position[1] * f[1] - position[2] * f[2]];
-
-    [
-        [s_norm[0], u[0], f[0], 0.0],
-        [s_norm[1], u[1], f[1], 0.0],
-        [s_norm[2], u[2], f[2], 0.0],
-        [p[0], p[1], p[2], 1.0],
-    ]
-}
-
 pub struct RenderState {
     shader: graphics::Shader,
     sample_scene: Vec<Mesh>,
@@ -63,30 +29,19 @@ impl RenderState {
 
         let frame = graphics::Frame::start([0.0, 0.0, 1.0], window_dimensions);
 
-        let perspective = {
-            let (width, height) = window_dimensions;
-            let aspect_ratio = height as f32 / width as f32;
-
-            let fov: f32 = std::f32::consts::PI / 3.0;
-            let zfar = 1024.0;
-            let znear = 0.1;
-
-            let f = 1.0 / (fov / 2.0).tan();
-
-            [
-                [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
-                [         0.0         ,     f ,              0.0              ,   0.0],
-                [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
-                [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0],
-            ]
-        };
+        let perspective = glam::Mat4::perspective_rh_gl(
+            std::f32::consts::PI / 3.0,
+            window_dimensions.0 as f32 / window_dimensions.1 as f32,
+            0.1,
+            1024.0,
+        );
 
         let camera_direction = [
             game.camera_yaw.cos() * game.camera_pitch.cos(),
             game.camera_yaw.sin() * game.camera_pitch.cos(),
             game.camera_pitch.sin(),
-        ];
-        let view = view_matrix(&game.camera_position.into(), &camera_direction, &[0.0, 0.0, 1.0]);
+        ].into();
+        let view = glam::Mat4::look_at_rh(game.camera_position + camera_direction, game.camera_position, [0.0, 0.0, 1.0].into());
 
         for mesh in &self.sample_scene {
             // let scale = Matrix4::from_scale(100.0);
@@ -96,8 +51,8 @@ impl RenderState {
 
             let model = mesh.transform;
 
-            self.shader.uniform("perspective", perspective);
-            self.shader.uniform("view", view);
+            self.shader.uniform("perspective", perspective.to_cols_array_2d());
+            self.shader.uniform("view", view.to_cols_array_2d());
             self.shader.uniform("model", model);
             self.shader.uniform("diffuse_texture", mesh.diffuse.clone().unwrap_or(graphics::Texture::empty()));
             self.shader.uniform("normal_texture", mesh.normal.clone().unwrap_or(graphics::Texture::empty()));

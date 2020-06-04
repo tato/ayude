@@ -1,4 +1,4 @@
-use std::{io::Read, sync::mpsc, rc};
+use std::{io::Read, rc};
 
 #[derive(Clone)]
 pub struct Texture {
@@ -26,7 +26,7 @@ impl Texture {
 
         Texture{ id: id.into() }
     }
-    pub fn from_file_name(file_name: &str) -> Option<Self> {
+    pub fn from_file_name(_file_name: &str) -> Option<Self> {
         let file_name = "src/resources/placeholder.png";
         let (bytes, width, height) = futures::executor::block_on(load_texture_from_file_name(file_name))?;
         Some(Self::from_rgba(&bytes, width as i32, height as i32))

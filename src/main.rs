@@ -46,7 +46,7 @@ fn main() {
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
     //glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGlEs));
 
-    let (mut window, mut events) = glfw.create_window(
+    let (mut window, events) = glfw.create_window(
         800, 600,
         "a.yude",
         glfw::WindowMode::Windowed
@@ -90,7 +90,7 @@ fn main() {
                     // if game.camera_yaw <= -2.0*PI { game.camera_yaw += 2.0*PI; }
 
                     let freedom_y = 0.8;
-                    game.camera_pitch += -delta.1 as f32 * 0.006;
+                    game.camera_pitch += delta.1 as f32 * 0.006;
                     game.camera_pitch = game
                         .camera_pitch
                         .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
