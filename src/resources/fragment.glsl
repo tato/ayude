@@ -30,11 +30,9 @@ mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
 }
 
 void main() {
-    vec3 normal_map = texture(normal_texture, v_uv).rgb;
-    mat3 tbn = cotangent_frame(v_normal, v_position, v_uv);
     vec3 real_normal;
     if (has_normal_texture) {
-        real_normal = normalize(tbn * -(normal_map * 2.0 - 1.0));
+        real_normal = texture(normal_texture, v_uv).rgb;
     } else {
         real_normal = v_normal;
     }
@@ -43,7 +41,8 @@ void main() {
 
     vec3 camera_dir = normalize(-v_position);
     vec3 half_direction = normalize(normalize(u_light_direction) + camera_dir);
-    float specular = pow(max(dot(half_direction, normalize(real_normal)), 0.0), 16.0);
+    mat3 tbn = cotangent_frame(v_normal, v_position, v_uv);
+    float specular = pow(max(dot(half_direction, normalize(tbn * -(real_normal * 2.0 - 1.0))), 0.0), 16.0);
 
     vec3 diffuse_color;
     if (has_diffuse_texture) {
