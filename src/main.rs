@@ -4,8 +4,8 @@ use std::{
     f32::consts::PI,
     time::{Duration, Instant},
 };
-use glfw::Context;
 use ayude::*;
+use glutin::{window::WindowBuilder, event_loop::{EventLoop, ControlFlow}, dpi::LogicalSize, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}, Api, GlRequest, Robustness, GlProfile};
 
 pub struct SceneNode {
     pub geometry: graphics::Geometry,
@@ -49,6 +49,16 @@ impl Scene {
     }
 }
 
+fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
+    let mut result: Vec3 = [
+        (-yaw).cos() * pitch.cos(),
+        (-yaw).sin() * pitch.cos(),
+        pitch.sin(),
+    ].into();
+    result.normalize();
+    result
+}
+
 pub struct GameState {
     camera_position: Vec3,
     camera_yaw: f32,
@@ -83,21 +93,17 @@ impl GameState {
         }
     }
 
-    fn update_and_render(&mut self, delta: Duration, window_dimensions: (i32, i32)) {
-        let mut forward_direction: Vec3 = [
-            (-self.camera_yaw).cos() * self.camera_pitch.cos(),
-            (-self.camera_yaw).sin() * self.camera_pitch.cos(),
-            self.camera_pitch.sin(),
-        ].into();
-        forward_direction = forward_direction.normalize();
+    fn update(&mut self, delta: Duration) {
+        let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
         let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
     
         let speed = 100.0;
         self.camera_position += forward_direction * self.movement[1] * speed * delta.as_secs_f32();
         self.camera_position += right_direction * self.movement[0] * speed * delta.as_secs_f32();
-        
-        // state.texture_repository.poll_textures(display);
+    }
 
+    fn render(&mut self, window_dimensions: (i32, i32)) {
+        let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
         let frame = graphics::Frame::start([0.0, 0.0, 1.0], window_dimensions);
 
         let perspective = glam::Mat4::perspective_rh_gl(
@@ -133,93 +139,100 @@ impl GameState {
 }
 
 fn main() {
-    let mut glfw = glfw::init(Some(glfw::FAIL_ON_ERRORS.unwrap())).unwrap();
+    let event_loop = EventLoop::new();
+    let window_builder = WindowBuilder::new()
+        .with_title("a.yude")
+        .with_inner_size(LogicalSize::new(1024.0, 768.0));
+    let window = ContextBuilder::new()
+        .with_gl(GlRequest::Specific(Api::OpenGl, (3, 3)))
+        .with_gl_profile(GlProfile::Core)
+        .with_gl_debug_flag(true)
+        .with_gl_robustness(Robustness::RobustLoseContextOnReset)
+        .with_vsync(true)
+        .build_windowed(window_builder, &event_loop)
+        .unwrap();
+    let window = unsafe { window.make_current().unwrap() };
 
-    glfw.window_hint(glfw::WindowHint::ContextVersion(3, 3));
-    glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(false));
-    glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
-    glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
-    //glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::OpenGlEs));
-
-    let (mut window, events) = glfw.create_window(
-        800, 600,
-        "a.yude",
-        glfw::WindowMode::Windowed
-    ).unwrap();
-
-    window.set_key_polling(true);
-    window.set_cursor_pos_polling(true);
-    window.set_cursor_mode(glfw::CursorMode::Disabled);
-    window.make_current();
+    window.window().set_cursor_grab(true);
+    window.window().set_cursor_visible(false);
 
     let mut previous_cursor_pos = (0.0, 0.0);
 
-    gl::load_with(|s| window.get_proc_address(s));
+    gl::load_with(|s| window.context().get_proc_address(s));
 
     let mut game = GameState::new();
 
     let mut previous_frame_time = Instant::now();
 
-    'running: while !window.should_close() {
-        glfw.poll_events();
-        for (_, event) in glfw::flush_messages(&events) {
-            match event {
-                glfw::WindowEvent::Close => {
-                    break 'running;
-                },
-                glfw::WindowEvent::CursorPos(x, y) => {
-                    let delta = (x - previous_cursor_pos.0, y - previous_cursor_pos.1);
-                    previous_cursor_pos = (x, y);
-
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
+        
+        match event {
+            Event::WindowEvent{ event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    *control_flow = ControlFlow::Exit;
+                }
+                _ => return,
+            },
+            Event::DeviceEvent{ event, .. } => match event {
+                DeviceEvent::MouseMotion { delta } => {
                     game.camera_yaw += delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
                     }
                     if game.camera_yaw <= 0.0 { game.camera_yaw += 2.0*PI; }
-
+    
                     let freedom_y = 0.8;
                     game.camera_pitch -= delta.1 as f32 * 0.006;
                     game.camera_pitch = game
                         .camera_pitch
                         .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
                 },
-                glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => match key {
-                    glfw::Key::W => {
-                        if action == glfw::Action::Press {
+                DeviceEvent::Key(input) => match input.virtual_keycode {
+                    Some(VirtualKeyCode::W) => {
+                        if input.state == ElementState::Pressed {
                             game.movement[1] = 1.0;
-                        } else if action == glfw::Action::Release {
+                        } else if input.state == ElementState::Released {
                             game.movement[1] = 0.0f32.min(game.movement[1]);
                         }
                     }
-                    glfw::Key::A => {
-                        if action == glfw::Action::Press {
+                    Some(VirtualKeyCode::A) => {
+                        if input.state == ElementState::Pressed {
                             game.movement[0] = -1.0;
-                        } else if action == glfw::Action::Release {
+                        } else if input.state == ElementState::Released {
                             game.movement[0] = 0.0f32.max(game.movement[0]);
                         }
                     }
-                    glfw::Key::S => {
-                        if action == glfw::Action::Press {
+                    Some(VirtualKeyCode::S) => {
+                        if input.state == ElementState::Pressed {
                             game.movement[1] = -1.0;
-                        } else if action == glfw::Action::Release {
+                        } else if input.state == ElementState::Released {
                             game.movement[1] = 0.0f32.max(game.movement[1]);
                         }
                     }
-                    glfw::Key::D => {
-                        if action == glfw::Action::Press {
+                    Some(VirtualKeyCode::D) => {
+                        if input.state == ElementState::Pressed {
                             game.movement[0] = 1.0;
-                        } else if action == glfw::Action::Release {
+                        } else if input.state == ElementState::Released {
                             game.movement[0] = 0.0f32.min(game.movement[0]);
                         }
                     }
-                    _ => { },
+                    _ => return,
                 },
                 _ => return,
-            }
+            },
+            Event::MainEventsCleared => {
+                let delta = previous_frame_time.elapsed();
+                previous_frame_time = Instant::now();
+                game.update(delta);
+                window.window().request_redraw();
+            },
+            Event::RedrawRequested(..) => {
+                let inner_size = window.window().inner_size();
+                game.render((inner_size.width as i32, inner_size.height as i32));
+                window.swap_buffers();
+            },
+            _ => return,
         }
-        let delta = previous_frame_time.elapsed();
-        previous_frame_time = Instant::now();
-        game.update_and_render(delta, window.get_framebuffer_size());
-        window.swap_buffers();
-    }
+    });
 }

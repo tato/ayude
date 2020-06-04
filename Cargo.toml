@@ -16,10 +16,10 @@ debug = true
 panic = "unwind"
 
 [dependencies]
-glfw = "0.37"
+glutin = "0.24"
 gl = "0.14"
-image = { version="0.23", default-features=false, features=["png", "jpeg"] }
 glam = "0.8"
+image = { version="0.23", default-features=false, features=["png", "jpeg"] }
 serde = { version="1.0", features=[ "derive" ] }
 serde_bytes = "0.11"
 serde_json = "1.0"
