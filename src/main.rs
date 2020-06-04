@@ -12,7 +12,14 @@ use error::AyudeError;
 mod graphics;
 #[allow(non_snake_case)]
 mod gltf;
-mod render;
+
+pub struct Mesh {
+    pub geometry: graphics::Geometry,
+    pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
+    pub diffuse: Option<graphics::Texture>,
+    pub normal: Option<graphics::Texture>,
+    pub base_diffuse_color: [f32; 4],
+}
 
 pub struct GameState {
     camera_position: Vec3,
@@ -20,21 +27,79 @@ pub struct GameState {
     camera_pitch: f32,
 
     movement: [f32; 2], // stores WASD input
+    
+    shader: graphics::Shader,
+    sample_scene: Vec<Mesh>,
 }
 
-fn update(delta: Duration, game: &mut GameState) {
-    let mut forward_direction: Vec3 = [
-        game.camera_yaw.cos() * game.camera_pitch.cos(),
-        game.camera_yaw.sin() * game.camera_pitch.cos(),
-        game.camera_pitch.sin(),
-    ]
-    .into();
-    forward_direction = forward_direction.normalize();
-    let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
+impl GameState {
+    fn new() -> Self {
+        static VERTEX_SOURCE: &str = include_str!("resources/vertex.glsl");
+        static FRAGMENT_SOURCE: &str = include_str!("resources/fragment.glsl");
+        let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
+    
+        let sample_scene = gltf::load_gltf("samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
 
-    let speed = 100.0;
-    game.camera_position += forward_direction * game.movement[1] * speed * delta.as_secs_f32();
-    game.camera_position -= right_direction * game.movement[0] * speed * delta.as_secs_f32();
+        GameState {
+            camera_position: [0.0, 0.0, 0.0].into(),
+            camera_yaw: 0.0,
+            camera_pitch: 0.0,
+    
+            movement: [0.0, 0.0],
+
+            shader,
+            sample_scene
+        }
+    }
+
+    fn update_and_render(&mut self, delta: Duration, window_dimensions: (i32, i32)) {
+        let mut forward_direction: Vec3 = [
+            (-self.camera_yaw).cos() * (-self.camera_pitch).cos(),
+            (-self.camera_yaw).sin() * (-self.camera_pitch).cos(),
+            (-self.camera_pitch).sin(),
+        ]
+        .into();
+        forward_direction = forward_direction.normalize();
+        let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
+    
+        let speed = 100.0;
+        self.camera_position += forward_direction * self.movement[1] * speed * delta.as_secs_f32();
+        self.camera_position += right_direction * self.movement[0] * speed * delta.as_secs_f32();
+        
+        // state.texture_repository.poll_textures(display);
+
+        let frame = graphics::Frame::start([0.0, 0.0, 1.0], window_dimensions);
+
+        let perspective = glam::Mat4::perspective_rh_gl(
+            std::f32::consts::PI / 3.0,
+            window_dimensions.0 as f32 / window_dimensions.1 as f32,
+            0.1,
+            1024.0,
+        );
+
+        let view = glam::Mat4::look_at_rh(self.camera_position, self.camera_position + forward_direction, [0.0, 0.0, 1.0].into());
+
+        for mesh in &self.sample_scene {
+            // let scale = Matrix4::from_scale(100.0);
+            // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
+            // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
+            // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
+
+            let model = mesh.transform;
+
+            self.shader.uniform("perspective", perspective.to_cols_array_2d());
+            self.shader.uniform("view", view.to_cols_array_2d());
+            self.shader.uniform("model", model);
+            self.shader.uniform("diffuse_texture", mesh.diffuse.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("normal_texture", mesh.normal.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("has_diffuse_texture", mesh.diffuse.is_some());
+            self.shader.uniform("has_normal_texture", mesh.normal.is_some());
+            self.shader.uniform("base_diffuse_color", mesh.base_diffuse_color);
+            self.shader.uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+
+            frame.render(&mesh.geometry, &self.shader);
+        }
+    }
 }
 
 fn main() {
@@ -60,15 +125,8 @@ fn main() {
     let mut previous_cursor_pos = (0.0, 0.0);
 
     gl::load_with(|s| window.get_proc_address(s));
-    let mut render_state = render::RenderState::new();
 
-    let mut game = GameState {
-        camera_position: [0.0, 0.0, 0.0].into(),
-        camera_yaw: 0.0,
-        camera_pitch: 0.0,
-
-        movement: [0.0, 0.0],
-    };
+    let mut game = GameState::new();
 
     let mut previous_frame_time = Instant::now();
 
@@ -97,31 +155,31 @@ fn main() {
                 },
                 glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => match key {
                     glfw::Key::W => {
-                        game.movement[1] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
-                            1.0
-                        } else {
-                            0.0f32.min(game.movement[1])
+                        if action == glfw::Action::Press {
+                            game.movement[1] = 1.0;
+                        } else if action == glfw::Action::Release {
+                            game.movement[1] = 0.0f32.min(game.movement[1]);
                         }
                     }
                     glfw::Key::A => {
-                        game.movement[0] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
-                            -1.0
-                        } else {
-                            0.0f32.max(game.movement[0])
+                        if action == glfw::Action::Press {
+                            game.movement[0] = -1.0;
+                        } else if action == glfw::Action::Release {
+                            game.movement[0] = 0.0f32.max(game.movement[0]);
                         }
                     }
                     glfw::Key::S => {
-                        game.movement[1] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
-                            -1.0
-                        } else {
-                            0.0f32.max(game.movement[1])
+                        if action == glfw::Action::Press {
+                            game.movement[1] = -1.0;
+                        } else if action == glfw::Action::Release {
+                            game.movement[1] = 0.0f32.max(game.movement[1]);
                         }
                     }
                     glfw::Key::D => {
-                        game.movement[0] = if action == glfw::Action::Press || action == glfw::Action::Repeat {
-                            1.0
-                        } else {
-                            0.0f32.min(game.movement[0])
+                        if action == glfw::Action::Press {
+                            game.movement[0] = 1.0;
+                        } else if action == glfw::Action::Release {
+                            game.movement[0] = 0.0f32.min(game.movement[0]);
                         }
                     }
                     _ => { },
@@ -131,9 +189,7 @@ fn main() {
         }
         let delta = previous_frame_time.elapsed();
         previous_frame_time = Instant::now();
-        update(delta, &mut game);
-
-        render_state.render(&game, window.get_framebuffer_size());
+        game.update_and_render(delta, window.get_framebuffer_size());
         window.swap_buffers();
     }
 }

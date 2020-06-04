@@ -100,7 +100,7 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(file_name: &str) -> Result<Vec<render::Mesh>, crate::AyudeError> {
+pub fn load_gltf(file_name: &str) -> Result<Vec<crate::Mesh>, crate::AyudeError> {
     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 
     let gltf_base_folder = file_name.rfind('/')
@@ -220,7 +220,7 @@ pub fn load_gltf(file_name: &str) -> Result<Vec<render::Mesh>, crate::AyudeError
             // let vertices = VertexBuffer::new(display, &vertices).unwrap();
             // let indices = IndexBuffer::new(display, PrimitiveType::TrianglesList, &indices).unwrap();
             let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            meshes.push(render::Mesh{ geometry, transform, diffuse, normal, base_diffuse_color });
+            meshes.push(crate::Mesh{ geometry, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
