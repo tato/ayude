@@ -53,6 +53,7 @@ struct Accesor {
     #[serde(alias = "type")]
     _type: String,
     count: usize,
+    #[serde(default)]
     byteOffset: usize,
 }
 #[derive(Debug, Deserialize)]
@@ -205,7 +206,7 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
 
             let indices: &[u16] = {
                 let accessor = &document.accessors[primitive.indices];
-                debug_assert!(accessor.componentType == 5123);
+                debug_assert!(accessor.componentType == 5123, "accessor.componentType ({}) == 5123", accessor.componentType);
                 debug_assert!(accessor._type == "SCALAR");
                 let view = &document.bufferViews[accessor.bufferView];
                 let buffer = &buffers[view.buffer][view.byteOffset..(view.byteOffset+view.byteLength)];

@@ -50,13 +50,12 @@ impl Scene {
 }
 
 fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
-    let mut result: Vec3 = [
+    let result: Vec3 = [
         (-yaw).cos() * pitch.cos(),
         (-yaw).sin() * pitch.cos(),
         pitch.sin(),
     ].into();
-    result.normalize();
-    result
+    result.normalize()
 }
 
 pub struct GameState {
@@ -77,7 +76,9 @@ impl GameState {
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
     
         let sample_scene = {
-            let unloaded = gltf::load_gltf("samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf").unwrap();
+            let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+            // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
+            let unloaded = gltf::load_gltf(gltf_file_name).unwrap();
             Scene::upload(unloaded).unwrap()
         };
 
@@ -153,10 +154,8 @@ fn main() {
         .unwrap();
     let window = unsafe { window.make_current().unwrap() };
 
-    window.window().set_cursor_grab(true);
+    window.window().set_cursor_grab(true).unwrap();
     window.window().set_cursor_visible(false);
-
-    let mut previous_cursor_pos = (0.0, 0.0);
 
     gl::load_with(|s| window.context().get_proc_address(s));
 
@@ -230,7 +229,7 @@ fn main() {
             Event::RedrawRequested(..) => {
                 let inner_size = window.window().inner_size();
                 game.render((inner_size.width as i32, inner_size.height as i32));
-                window.swap_buffers();
+                window.swap_buffers().unwrap();
             },
             _ => return,
         }
