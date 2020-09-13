@@ -71,8 +71,8 @@ pub struct GameState {
 
 impl GameState {
     fn new() -> Self {
-        static VERTEX_SOURCE: &str = include_str!("resources/vertex.glsl");
-        static FRAGMENT_SOURCE: &str = include_str!("resources/fragment.glsl");
+        static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
+        static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
     
         let sample_scene = {

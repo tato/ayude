@@ -27,11 +27,6 @@ impl From<serde_json::error::Error> for AyudeError {
         AyudeError{ cause: e.to_string() }
     }
 }
-impl From<bincode::Error> for AyudeError {
-    fn from(e: bincode::Error) -> Self {
-        AyudeError{ cause: e.to_string() }
-    }
-}
 impl From<image::error::ImageError> for AyudeError {
     fn from(e: image::error::ImageError) -> Self {
         AyudeError{ cause: e.to_string() }
