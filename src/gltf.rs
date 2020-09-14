@@ -150,13 +150,18 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
         let node = node_queue.pop().unwrap();
         let parent_transform = transform_queue.pop().unwrap_or(Mat4::identity());
 
+        let mesh = match node.mesh {
+            Some(index) => &document.meshes[index],
+            None => continue,
+        };
+
         let node_local_transform = {
             if let Some(m) = node.matrix {
                 Mat4::from_cols_array(&m)
             } else {
                 let t: Vec3 = node.translation.unwrap_or([0.0, 0.0, 0.0]).into(); 
                 let r: Quat = node.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]).into();
-                let s: Vec3 = node.translation.unwrap_or([1.0, 1.0, 1.0]).into();
+                let s: Vec3 = node.scale.unwrap_or([1.0, 1.0, 1.0]).into();
                 Mat4::from_translation(t) * Mat4::from_quat(r) * Mat4::from_scale(s)
             }
         };
@@ -166,11 +171,6 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
             node_queue.push(&document.nodes[*index]);
             transform_queue.push(transform);
         }
-
-        let mesh = match node.mesh {
-            Some(index) => &document.meshes[index],
-            None => continue,
-        };
 
         for primitive in &mesh.primitives {
             let positions: &[[f32; 3]] = {
@@ -237,10 +237,6 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
             nodes.push(UnloadedSceneNode{ geometry_positions, geometry_normals, geometry_uvs, geometry_indices, transform, diffuse, normal, base_diffuse_color });
         }
     }
-
-    use std::io::Write;
-    let mut log = std::fs::File::create("sponza.ron")?;
-    write!(log, "{:#?}", nodes)?;
 
     Ok(UnloadedScene{ nodes, images, images_byte_buffer })
 }

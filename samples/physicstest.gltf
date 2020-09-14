@@ -1,7 +1,7 @@
 {
     "asset" : {
         "copyright" : "Pablo Tato Ramos",
-        "generator" : "Khronos glTF Blender I/O v1.0.5",
+        "generator" : "Khronos glTF Blender I/O v1.1.46",
         "version" : "2.0"
     },
     "scene" : 0,
@@ -73,6 +73,11 @@
     "materials" : [
         {
             "doubleSided" : true,
+            "emissiveFactor" : [
+                0,
+                0,
+                0
+            ],
             "name" : "Material",
             "pbrMetallicRoughness" : {
                 "baseColorFactor" : [
@@ -87,6 +92,11 @@
         },
         {
             "doubleSided" : true,
+            "emissiveFactor" : [
+                0,
+                0,
+                0
+            ],
             "name" : "Material.001",
             "pbrMetallicRoughness" : {
                 "baseColorFactor" : [

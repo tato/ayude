@@ -80,7 +80,7 @@ impl GameState {
         let sample_scene = {
             let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
             // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
-            //let gltf_file_name = "samples/physicstest.gltf";
+            let gltf_file_name = "samples/physicstest.gltf";
             let unloaded = gltf::load_gltf(gltf_file_name).unwrap();
             Scene::upload(unloaded).unwrap()
         };
