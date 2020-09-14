@@ -12,8 +12,11 @@ struct Document {
     buffers: Vec<Buffer>,
     bufferViews: Vec<BufferView>,
     accessors: Vec<Accesor>,
+    #[serde(default)]
     samplers: Vec<Sampler>,
+    #[serde(default)]
     images: Vec<Image>,
+    #[serde(default)]
     textures: Vec<Texture>,
     materials: Vec<Material>,
     meshes: Vec<Mesh>,
@@ -94,7 +97,7 @@ struct Mesh {
 struct Primitive {
     indices: usize,
     material: usize,
-    mode: usize,
+    mode: Option<usize>,
     attributes: HashMap<String, usize>,
 }
 #[derive(Debug, Deserialize)]
@@ -235,10 +238,14 @@ pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
         }
     }
 
+    use std::io::Write;
+    let mut log = std::fs::File::create("sponza.ron")?;
+    write!(log, "{:#?}", nodes)?;
+
     Ok(UnloadedScene{ nodes, images, images_byte_buffer })
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UnloadedSceneNode {
     pub geometry_positions: Vec<[f32; 3]>,
     pub geometry_normals: Vec<[f32; 3]>,

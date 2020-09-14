@@ -67,6 +67,8 @@ pub struct GameState {
     
     shader: graphics::Shader,
     sample_scene: Scene,
+
+    physics: physics::PhysicsState
 }
 
 impl GameState {
@@ -78,9 +80,12 @@ impl GameState {
         let sample_scene = {
             let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
             // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
+            //let gltf_file_name = "samples/physicstest.gltf";
             let unloaded = gltf::load_gltf(gltf_file_name).unwrap();
             Scene::upload(unloaded).unwrap()
         };
+
+        let physics = physics::PhysicsState::new();
 
         GameState {
             camera_position: [0.0, 0.0, 0.0].into(),
@@ -90,11 +95,15 @@ impl GameState {
             movement: [0.0, 0.0],
 
             shader,
-            sample_scene
+            sample_scene,
+
+            physics
         }
     }
 
     fn update(&mut self, delta: Duration) {
+        self.physics.step(); // TODO! once every 1/60th second. fixed timestep!!
+
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
         let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
     

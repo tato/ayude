@@ -20,6 +20,9 @@ glutin = "0"
 gl = "0"
 glam = "0"
 image = { version="0", default-features=false, features=["png", "jpeg"] }
+rapier3d = { version="0", features=["simd-nightly", "parallel"] }
+
+# loading gltf
 serde = { version="1", features=[ "derive" ] }
 serde_bytes = "0"
 serde_json = "1"
