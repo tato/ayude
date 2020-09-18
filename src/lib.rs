@@ -6,3 +6,6 @@ pub mod graphics;
 pub mod gltf;
 
 pub mod physics;
+
+mod catalog;
+pub use catalog::{Catalog, Handle};
