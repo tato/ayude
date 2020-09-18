@@ -58,7 +58,7 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
     result.normalize()
 }
 
-pub struct GameState {
+pub struct World {
     camera_position: Vec3,
     camera_yaw: f32,
     camera_pitch: f32,
@@ -71,7 +71,7 @@ pub struct GameState {
     physics: physics::PhysicsState
 }
 
-impl GameState {
+impl World {
     fn new() -> Self {
         static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
@@ -87,7 +87,7 @@ impl GameState {
 
         let physics = physics::PhysicsState::new();
 
-        GameState {
+        World {
             camera_position: [0.0, 0.0, 0.0].into(),
             camera_yaw: 0.0,
             camera_pitch: 0.0,
@@ -168,7 +168,7 @@ fn main() {
 
     gl::load_with(|s| window.context().get_proc_address(s));
 
-    let mut game = GameState::new();
+    let mut world = World::new();
 
     let mut previous_frame_time = Instant::now();
 
@@ -184,45 +184,45 @@ fn main() {
             },
             Event::DeviceEvent{ event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
-                    game.camera_yaw += delta.0 as f32 * 0.006;
-                    if game.camera_yaw >= 2.0 * PI {
-                        game.camera_yaw -= 2.0 * PI;
+                    world.camera_yaw += delta.0 as f32 * 0.006;
+                    if world.camera_yaw >= 2.0 * PI {
+                        world.camera_yaw -= 2.0 * PI;
                     }
-                    if game.camera_yaw <= 0.0 { game.camera_yaw += 2.0*PI; }
+                    if world.camera_yaw <= 0.0 { world.camera_yaw += 2.0*PI; }
     
                     let freedom_y = 0.8;
-                    game.camera_pitch -= delta.1 as f32 * 0.006;
-                    game.camera_pitch = game
+                    world.camera_pitch -= delta.1 as f32 * 0.006;
+                    world.camera_pitch = world
                         .camera_pitch
                         .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
                 },
                 DeviceEvent::Key(input) => match input.virtual_keycode {
                     Some(VirtualKeyCode::W) => {
                         if input.state == ElementState::Pressed {
-                            game.movement[1] = 1.0;
+                            world.movement[1] = 1.0;
                         } else if input.state == ElementState::Released {
-                            game.movement[1] = 0.0f32.min(game.movement[1]);
+                            world.movement[1] = 0.0f32.min(world.movement[1]);
                         }
                     }
                     Some(VirtualKeyCode::A) => {
                         if input.state == ElementState::Pressed {
-                            game.movement[0] = -1.0;
+                            world.movement[0] = -1.0;
                         } else if input.state == ElementState::Released {
-                            game.movement[0] = 0.0f32.max(game.movement[0]);
+                            world.movement[0] = 0.0f32.max(world.movement[0]);
                         }
                     }
                     Some(VirtualKeyCode::S) => {
                         if input.state == ElementState::Pressed {
-                            game.movement[1] = -1.0;
+                            world.movement[1] = -1.0;
                         } else if input.state == ElementState::Released {
-                            game.movement[1] = 0.0f32.max(game.movement[1]);
+                            world.movement[1] = 0.0f32.max(world.movement[1]);
                         }
                     }
                     Some(VirtualKeyCode::D) => {
                         if input.state == ElementState::Pressed {
-                            game.movement[0] = 1.0;
+                            world.movement[0] = 1.0;
                         } else if input.state == ElementState::Released {
-                            game.movement[0] = 0.0f32.min(game.movement[0]);
+                            world.movement[0] = 0.0f32.min(world.movement[0]);
                         }
                     }
                     _ => return,
@@ -232,12 +232,12 @@ fn main() {
             Event::MainEventsCleared => {
                 let delta = previous_frame_time.elapsed();
                 previous_frame_time = Instant::now();
-                game.update(delta);
+                world.update(delta);
                 window.window().request_redraw();
             },
             Event::RedrawRequested(..) => {
                 let inner_size = window.window().inner_size();
-                game.render((inner_size.width as i32, inner_size.height as i32));
+                world.render((inner_size.width as i32, inner_size.height as i32));
                 window.swap_buffers().unwrap();
             },
             _ => return,
