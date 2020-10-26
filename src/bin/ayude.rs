@@ -7,7 +7,7 @@ use ayude::*;
 use glutin::{window::WindowBuilder, event_loop::{EventLoop, ControlFlow}, dpi::LogicalSize, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}, Api, GlRequest, Robustness, GlProfile};
 
 pub struct RenderObject {
-    pub geometry: graphics::Geometry,
+    pub geometry_id: catalog::Id<graphics::Geometry>,
     pub diffuse: Option<graphics::Texture>,
     pub normal: Option<graphics::Texture>,
     pub base_diffuse_color: [f32; 4],
@@ -18,12 +18,15 @@ pub struct StaticEntity {
 }
 
 pub struct World {
-    pub statics: Vec<StaticEntity>
+    pub statics: Vec<StaticEntity>,
+    pub geometries: Catalog<graphics::Geometry>,
 }
 
 impl World {
     fn upload(scene: gltf::UnloadedScene) -> Result<Self, AyudeError> {
         let mut nodes = Vec::new();
+        let mut geometries = Catalog::new();
+
         let textures = scene.images.iter().map(|image| {
             graphics::Texture::from_rgba(&scene.images_byte_buffer[image.offset..image.offset+image.size], image.width as i32, image.height as i32)
         }).collect::<Vec<_>>();
@@ -37,6 +40,7 @@ impl World {
                 &unode.geometry_uvs,
                 &unode.geometry_indices
             );
+            let geometry_id = geometries.add(geometry);
 
             let diffuse = unode.diffuse.map(|index| {
                 textures[index].clone()
@@ -45,10 +49,10 @@ impl World {
                 textures[index].clone()
             });
 
-            let render_object = RenderObject{ geometry, diffuse, normal, base_diffuse_color };
+            let render_object = RenderObject{ geometry_id, diffuse, normal, base_diffuse_color };
             nodes.push(StaticEntity{ transform, render_object });
         }
-        Ok(crate::World{ statics: nodes })
+        Ok(crate::World{ statics: nodes, geometries })
     }
 }
 
@@ -69,7 +73,7 @@ pub struct GameState {
     movement: [f32; 2], // stores WASD input
     
     shader: graphics::Shader,
-    sample_scene: World,
+    world: World,
 
     physics: physics::PhysicsState
 }
@@ -98,7 +102,7 @@ impl GameState {
             movement: [0.0, 0.0],
 
             shader,
-            sample_scene,
+            world: sample_scene,
 
             physics
         }
@@ -128,7 +132,7 @@ impl GameState {
 
         let view = glam::Mat4::look_at_rh(self.camera_position, self.camera_position + forward_direction, [0.0, 0.0, 1.0].into());
 
-        for entity in &self.sample_scene.statics {
+        for entity in &self.world.statics {
             // let scale = Matrix4::from_scale(100.0);
             // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
             // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
@@ -147,7 +151,9 @@ impl GameState {
             self.shader.uniform("base_diffuse_color", o.base_diffuse_color);
             self.shader.uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
 
-            frame.render(&o.geometry, &self.shader);
+            if let Some(geometry)  = self.world.geometries.get(o.geometry_id) {
+                frame.render(geometry, &self.shader);
+            }
         }
     }
 }
