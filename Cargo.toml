@@ -5,22 +5,18 @@ authors = ["Pablo Tato Ramos <pabtatoramos@gmail.com>"]
 edition = "2018"
 default-run = "ayude"
 
-[profile.dev]
-panic = "unwind"
-
 [profile.dev.package."*"]
 opt-level = 2
 
 [profile.release]
 debug = true
-panic = "unwind"
 
 [dependencies]
 glutin = "0"
 gl = "0"
 glam = "0"
 image = { version="0", default-features=false, features=["png", "jpeg"] }
-rapier3d = { version="0", features=["simd-nightly", "parallel"] }
+rapier3d = { version="0", features=["parallel"] }
 
 # loading gltf
 serde = { version="1", features=[ "derive" ] }

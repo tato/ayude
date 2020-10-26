@@ -1,4 +1,3 @@
-#![feature(clamp)]
 use glam::Vec3;
 use std::{
     f32::consts::PI,
@@ -194,7 +193,8 @@ fn main() {
                     game.camera_pitch -= delta.1 as f32 * 0.006;
                     game.camera_pitch = game
                         .camera_pitch
-                        .clamp(-PI / 2.0 * freedom_y, PI / 2.0 * freedom_y);
+                        .max(-PI / 2.0 * freedom_y)
+                        .min(PI / 2.0 * freedom_y);
                 },
                 DeviceEvent::Key(input) => match input.virtual_keycode {
                     Some(VirtualKeyCode::W) => {
