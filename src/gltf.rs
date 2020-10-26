@@ -131,6 +131,7 @@ pub fn load(file_name: &str) -> Result<UnloadedScene, AyudeError> {
     }
 
     let mut nodes = Vec::new();
+    let mut geometries = Vec::new();
     
     let y_up_to_z_up_transform = Mat4::from_cols_array(&[
         0.0, 1.0, 0.0, 0.0,
@@ -229,24 +230,27 @@ pub fn load(file_name: &str) -> Result<UnloadedScene, AyudeError> {
 
             let base_diffuse_color = material.pbrMetallicRoughness.baseColorFactor;
 
-            let geometry_positions = positions.to_vec();
-            let geometry_normals = normals.to_vec();
-            let geometry_uvs = uvs.to_vec();
-            let geometry_indices = indices.to_vec();
+            let positions = positions.to_vec();
+            let normals = normals.to_vec();
+            let uvs = uvs.to_vec();
+            let indices = indices.to_vec();
             let transform = (y_up_to_z_up_transform * transform).to_cols_array_2d();
-            nodes.push(UnloadedSceneNode{ geometry_positions, geometry_normals, geometry_uvs, geometry_indices, transform, diffuse, normal, base_diffuse_color });
+
+            let geometry = UnloadedGeometry{positions, normals, uvs, indices};
+            geometries.push(geometry);
+
+            let geometry_id = geometries.len() as u32 - 1;
+
+            nodes.push(UnloadedSceneNode{ geometry_id, transform, diffuse, normal, base_diffuse_color });
         }
     }
 
-    Ok(UnloadedScene{ nodes, images, images_byte_buffer })
+    Ok(UnloadedScene{ nodes, images, geometries, images_byte_buffer })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnloadedSceneNode {
-    pub geometry_positions: Vec<[f32; 3]>,
-    pub geometry_normals: Vec<[f32; 3]>,
-    pub geometry_uvs: Vec<[f32; 2]>,
-    pub geometry_indices: Vec<u16>,
+    pub geometry_id: u32,
 
     pub transform: [[f32; 4]; 4],
 
@@ -263,9 +267,18 @@ pub struct UnloadedImage {
     pub height: u32,
 }
 #[derive(Serialize, Deserialize)]
+pub struct UnloadedGeometry {
+
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    pub uvs: Vec<[f32; 2]>,
+    pub indices: Vec<u16>,
+}
+#[derive(Serialize, Deserialize)]
 pub struct UnloadedScene {
     pub nodes: Vec<UnloadedSceneNode>,
     pub images: Vec<UnloadedImage>,
+    pub geometries: Vec<UnloadedGeometry>,
     #[serde(with = "serde_bytes")]
     pub images_byte_buffer: Vec<u8>,
 }
