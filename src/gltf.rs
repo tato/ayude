@@ -105,7 +105,7 @@ struct Scene {
     nodes: Vec<usize>,
 }
 
-pub fn load_gltf(file_name: &str) -> Result<UnloadedScene, AyudeError> {
+pub fn load(file_name: &str) -> Result<UnloadedScene, AyudeError> {
     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 
     let gltf_base_folder = file_name.rfind('/')

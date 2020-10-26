@@ -6,19 +6,22 @@ use std::{
 use ayude::*;
 use glutin::{window::WindowBuilder, event_loop::{EventLoop, ControlFlow}, dpi::LogicalSize, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}, Api, GlRequest, Robustness, GlProfile};
 
-pub struct SceneNode {
+pub struct RenderObject {
     pub geometry: graphics::Geometry,
-    pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
     pub diffuse: Option<graphics::Texture>,
     pub normal: Option<graphics::Texture>,
     pub base_diffuse_color: [f32; 4],
 }
-
-pub struct Scene {
-    pub nodes: Vec<SceneNode>
+pub struct StaticEntity {
+    pub transform: [[f32; 4]; 4],
+    pub render_object: RenderObject,
 }
 
-impl Scene {
+pub struct World {
+    pub statics: Vec<StaticEntity>
+}
+
+impl World {
     fn upload(scene: gltf::UnloadedScene) -> Result<Self, AyudeError> {
         let mut nodes = Vec::new();
         let textures = scene.images.iter().map(|image| {
@@ -42,9 +45,10 @@ impl Scene {
                 textures[index].clone()
             });
 
-            nodes.push(SceneNode{ geometry, transform, diffuse, normal, base_diffuse_color });
+            let render_object = RenderObject{ geometry, diffuse, normal, base_diffuse_color };
+            nodes.push(StaticEntity{ transform, render_object });
         }
-        Ok(crate::Scene{ nodes })
+        Ok(crate::World{ statics: nodes })
     }
 }
 
@@ -65,7 +69,7 @@ pub struct GameState {
     movement: [f32; 2], // stores WASD input
     
     shader: graphics::Shader,
-    sample_scene: Scene,
+    sample_scene: World,
 
     physics: physics::PhysicsState
 }
@@ -77,11 +81,11 @@ impl GameState {
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
     
         let sample_scene = {
-            let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+            // let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
             // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
             let gltf_file_name = "samples/physicstest.gltf";
-            let unloaded = gltf::load_gltf(gltf_file_name).unwrap();
-            Scene::upload(unloaded).unwrap()
+            let unloaded = gltf::load(gltf_file_name).unwrap();
+            World::upload(unloaded).unwrap()
         };
 
         let physics = physics::PhysicsState::new();
@@ -104,7 +108,7 @@ impl GameState {
         self.physics.step(); // TODO! once every 1/60th second. fixed timestep!!
 
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
-        let right_direction: Vec3 = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
+        let right_direction = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
     
         let speed = 100.0;
         self.camera_position += forward_direction * self.movement[1] * speed * delta.as_secs_f32();
@@ -124,25 +128,26 @@ impl GameState {
 
         let view = glam::Mat4::look_at_rh(self.camera_position, self.camera_position + forward_direction, [0.0, 0.0, 1.0].into());
 
-        for mesh in &self.sample_scene.nodes {
+        for entity in &self.sample_scene.statics {
             // let scale = Matrix4::from_scale(100.0);
             // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
             // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
             // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
-            let model = mesh.transform;
+            let model = entity.transform;
+            let o = &entity.render_object;
 
             self.shader.uniform("perspective", perspective.to_cols_array_2d());
             self.shader.uniform("view", view.to_cols_array_2d());
             self.shader.uniform("model", model);
-            self.shader.uniform("diffuse_texture", mesh.diffuse.clone().unwrap_or(graphics::Texture::empty()));
-            self.shader.uniform("normal_texture", mesh.normal.clone().unwrap_or(graphics::Texture::empty()));
-            self.shader.uniform("has_diffuse_texture", mesh.diffuse.is_some());
-            self.shader.uniform("has_normal_texture", mesh.normal.is_some());
-            self.shader.uniform("base_diffuse_color", mesh.base_diffuse_color);
+            self.shader.uniform("diffuse_texture", o.diffuse.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("normal_texture", o.normal.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("has_diffuse_texture", o.diffuse.is_some());
+            self.shader.uniform("has_normal_texture", o.normal.is_some());
+            self.shader.uniform("base_diffuse_color", o.base_diffuse_color);
             self.shader.uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
 
-            frame.render(&mesh.geometry, &self.shader);
+            frame.render(&o.geometry, &self.shader);
         }
     }
 }
