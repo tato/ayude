@@ -7,7 +7,7 @@ pub struct Texture {
 
 impl Texture {
     pub fn empty() -> Self {
-        Texture{ id: 0.into() } // todo! this is debug only!!!!
+        Texture { id: 0.into() } // todo! this is debug only!!!!
     }
     pub fn from_rgba(rgba: &[u8], width: i32, height: i32) -> Self {
         let mut id = 0u32;
@@ -21,10 +21,20 @@ impl Texture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
 
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, width as i32, height as i32, 0, gl::RGBA, gl::UNSIGNED_BYTE, rgba.as_ptr() as *const std::ffi::c_void);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGBA as i32,
+                width as i32,
+                height as i32,
+                0,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+                rgba.as_ptr() as *const std::ffi::c_void,
+            );
         }
 
-        Texture{ id: id.into() }
+        Texture { id: id.into() }
     }
 }
 

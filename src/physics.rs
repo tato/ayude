@@ -1,4 +1,7 @@
-use rapier3d::{dynamics::JointSet, geometry::ColliderSet, dynamics::RigidBodySet, geometry::NarrowPhase, geometry::BroadPhase, dynamics::IntegrationParameters, pipeline::PhysicsPipeline};
+use rapier3d::{
+    dynamics::IntegrationParameters, dynamics::JointSet, dynamics::RigidBodySet,
+    geometry::BroadPhase, geometry::ColliderSet, geometry::NarrowPhase, pipeline::PhysicsPipeline,
+};
 
 pub struct PhysicsState {
     physics_pipeline: PhysicsPipeline,
@@ -29,7 +32,7 @@ impl PhysicsState {
             narrow_phase,
             bodies,
             colliders,
-            joints
+            joints,
         }
     }
 
@@ -43,7 +46,7 @@ impl PhysicsState {
             &mut self.bodies,
             &mut self.colliders,
             &mut self.joints,
-            &event_handler
+            &event_handler,
         );
     }
 }

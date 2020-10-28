@@ -10,7 +10,8 @@ pub struct Shader {
 impl Shader {
     pub fn from_sources(vertex: &str, fragment: &str) -> Result<Shader, AyudeError> {
         let vertex_id = create_single_shader_from_source(vertex.as_bytes(), gl::VERTEX_SHADER)?;
-        let fragment_id = create_single_shader_from_source(fragment.as_bytes(), gl::FRAGMENT_SHADER)?;
+        let fragment_id =
+            create_single_shader_from_source(fragment.as_bytes(), gl::FRAGMENT_SHADER)?;
 
         unsafe {
             let program_id = gl::CreateProgram();
@@ -34,9 +35,16 @@ impl Shader {
 
                 if info_log_length > 0 {
                     let mut info_log = vec![0u8; info_log_length as usize];
-                    gl::GetProgramInfoLog(program_id, info_log_length-1, std::ptr::null_mut(), (&mut info_log).as_mut_ptr() as *mut i8);
+                    gl::GetProgramInfoLog(
+                        program_id,
+                        info_log_length - 1,
+                        std::ptr::null_mut(),
+                        (&mut info_log).as_mut_ptr() as *mut i8,
+                    );
 
-                    let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?.to_str()?.to_string();
+                    let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?
+                        .to_str()?
+                        .to_string();
                     Err(error.into())
                 } else {
                     Err("Program didn't compile and it didn't provide an info log".into())
@@ -50,12 +58,23 @@ impl Shader {
                     let mut result_length = 0;
                     let mut result_size = 0;
                     let mut result_type = 0;
-                    gl::GetActiveUniform(program_id, i as u32, buffer.len() as i32, &mut result_length, &mut result_size, &mut result_type, buffer.as_mut_ptr() as *mut i8);
+                    gl::GetActiveUniform(
+                        program_id,
+                        i as u32,
+                        buffer.len() as i32,
+                        &mut result_length,
+                        &mut result_size,
+                        &mut result_type,
+                        buffer.as_mut_ptr() as *mut i8,
+                    );
 
                     let name = std::str::from_utf8_unchecked(&buffer[0..result_length as usize]);
                     println!("{}: {} ({})", name, result_type, result_size);
                 }
-                Ok(Shader { id: program_id, uniforms: HashMap::new(), })
+                Ok(Shader {
+                    id: program_id,
+                    uniforms: HashMap::new(),
+                })
             }
         }
     }
@@ -69,7 +88,8 @@ impl Shader {
             gl::UseProgram(self.id);
             let mut texture_offset = 0;
             for (name, value) in &self.uniforms {
-                let location = gl::GetUniformLocation(self.id, format!("{}\0", name).as_ptr() as *const i8);
+                let location =
+                    gl::GetUniformLocation(self.id, format!("{}\0", name).as_ptr() as *const i8);
                 value.bind(location, &mut texture_offset);
             }
         }
@@ -78,12 +98,11 @@ impl Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
-        unsafe { gl::DeleteProgram(self.id); }
+        unsafe {
+            gl::DeleteProgram(self.id);
+        }
     }
 }
-
-
-
 
 pub trait Uniform {
     unsafe fn bind(&self, location: i32, texture_offset: &mut u32);
@@ -117,17 +136,23 @@ impl Uniform for crate::graphics::Texture {
     }
 }
 
-
-
-
 fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u32, AyudeError> {
     unsafe {
         let shader_id = gl::CreateShader(shader_type);
-        gl::ShaderSource(shader_id, 1,  &source.as_ptr() as *const *const u8 as *const *const i8, &source.len() as *const usize as *const i32);
+        gl::ShaderSource(
+            shader_id,
+            1,
+            &source.as_ptr() as *const *const u8 as *const *const i8,
+            &source.len() as *const usize as *const i32,
+        );
         gl::CompileShader(shader_id);
 
         let mut shader_compilation_result = gl::FALSE as i32;
-        gl::GetShaderiv(shader_id, gl::COMPILE_STATUS, &mut shader_compilation_result);
+        gl::GetShaderiv(
+            shader_id,
+            gl::COMPILE_STATUS,
+            &mut shader_compilation_result,
+        );
 
         if shader_compilation_result == gl::TRUE as i32 {
             Ok(shader_id)
@@ -137,8 +162,15 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
 
             if info_log_length > 0 {
                 let mut info_log = vec![0u8; info_log_length as usize];
-                gl::GetShaderInfoLog(shader_id, info_log_length-1, std::ptr::null_mut(), (&mut info_log).as_mut_ptr() as *mut i8);
-                let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?.to_str()?.to_string();
+                gl::GetShaderInfoLog(
+                    shader_id,
+                    info_log_length - 1,
+                    std::ptr::null_mut(),
+                    (&mut info_log).as_mut_ptr() as *mut i8,
+                );
+                let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?
+                    .to_str()?
+                    .to_string();
                 Err(error.into())
             } else {
                 Err("Program didn't compile and it didn't provide an info log".into())
