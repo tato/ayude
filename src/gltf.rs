@@ -180,6 +180,7 @@ pub fn load(file_name: &str) -> Result<GLTF, AyudeError> {
     })
 }
 
+// todo! delete
 // pub fn load(file_name: &str) -> Result<UnloadedScene, AyudeError> {
 //     let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
 //     assert!(document.scene.map(|s| s < document.scenes.len()).unwrap_or(true));

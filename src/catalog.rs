@@ -26,13 +26,18 @@ impl<T> From<usize> for Id<T> {
         Id(i as u64, PhantomData)
     }
 }
+impl<T> Id<T> {
+    pub fn none() -> Self {
+        Id(std::u64::MAX, PhantomData)
+    }
+}
 
 pub struct Catalog<T> {
     items: HashMap<Id<T>, T>,
     counter: u64,
 }
 impl<T> std::iter::FromIterator<T> for Catalog<T> {
-    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut c = Self::new();
         for i in iter {
             c.add(i);
@@ -49,8 +54,8 @@ impl<T> Catalog<T> {
         }
     }
 
-    pub fn get(&self, id: Id<T>) -> Option<&T> {
-        self.items.get(&id)
+    pub fn get(&mut self, id: Id<T>) -> Option<&mut T> {
+        self.items.get_mut(&id)
     }
 
     pub fn add(&mut self, it: T) -> Id<T> {
@@ -62,5 +67,13 @@ impl<T> Catalog<T> {
 
     pub fn iter(&mut self) -> std::collections::hash_map::Values<'_, Id<T>, T> {
         self.items.values()
+    }
+
+    pub fn iter_ids(&mut self) -> std::collections::hash_map::Keys<'_, Id<T>, T> {
+        self.items.keys()
+    }
+
+    pub fn iter_with_id(&mut self) -> std::collections::hash_map::IterMut<'_, Id<T>, T> {
+        self.items.iter_mut()
     }
 }

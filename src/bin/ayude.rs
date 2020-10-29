@@ -1,5 +1,5 @@
 use ayude::*;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use glutin::{
     dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -11,7 +11,6 @@ use std::{
     f32::consts::PI,
     time::{Duration, Instant},
 };
-
 
 // pub struct RenderObject {
 //     pub geometry_id: catalog::Id<graphics::Geometry>,
@@ -75,11 +74,11 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
 
 struct Entity {
     children: Vec<catalog::Id<Entity>>,
+    parent: catalog::Id<Entity>,
     mesh: Option<catalog::Id<graphics::Mesh>>,
     transform: [[f32; 4]; 4],
 }
-struct Material {
-}
+struct Material {}
 
 pub struct World {
     camera_position: Vec3,
@@ -114,7 +113,7 @@ impl World {
             movement: [0.0, 0.0],
 
             shader,
-            
+
             meshes: Catalog::new(),
             materials: Catalog::new(),
             textures: Catalog::new(),
@@ -135,16 +134,45 @@ impl World {
     fn add_gltf_entities(&mut self, gltf: &gltf::GLTF) {
         let doc = &gltf.document;
         let scene = &doc.scenes[doc.scene.unwrap_or(0)];
-        self.entities = scene.nodes.iter()
-            .map(|&i| doc.nodes[i])
+        self.entities = scene
+            .nodes
+            .iter()
+            .map(|&i| &doc.nodes[i])
             .map(|node| Entity {
                 children: node.children.iter().map(|&i| i.into()).collect(),
+                parent: catalog::Id::none(),
                 mesh: node.mesh.map(|i| i.into()),
-                transform: ,
+                transform: {
+                    let t = if let Some(m) = node.matrix {
+                        Mat4::from_cols_array(&m)
+                    } else {
+                        let t: Vec3 = node.translation.unwrap_or([0.0, 0.0, 0.0]).into();
+                        let r: Quat = node.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]).into();
+                        let s: Vec3 = node.scale.unwrap_or([1.0, 1.0, 1.0]).into();
+                        Mat4::from_translation(t) * Mat4::from_quat(r) * Mat4::from_scale(s)
+                    };
+                    t.to_cols_array_2d()
+                },
             })
             .collect();
+        let entity_ids = self
+            .entities
+            .iter_ids()
+            .map(|it| it.clone())
+            .collect::<Vec<_>>();
+        for id in entity_ids {
+            let children_ids = self
+                .entities
+                .get(id)
+                .map(|it| it.children.clone())
+                .unwrap_or_else(|| Vec::new());
+            for child in children_ids {
+                self.entities.get(child).map(|c| c.parent = id);
+            }
+        }
         self.meshes = scene.nodes.iter()
-            .map(|&i| no puedo pensar estoy malito :()
+            .map(|&i| &doc.meshes[i])
+            .map(|node| graphics::Mesh::new(positions, normals, uvs, indices))
         self.materials = ;
         self.textures = ;
     }
@@ -177,39 +205,40 @@ impl World {
             [0.0, 0.0, 1.0].into(),
         );
 
-        for entity in &self.world.statics {
+        for entity in self.entities.iter() {
             // let scale = Matrix4::from_scale(100.0);
             // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
             // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
             // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
             let model = entity.transform;
-            let o = &entity.render_object;
+            // todo! bring back
+            // let o = &entity.render_object;
 
-            self.shader
-                .uniform("perspective", perspective.to_cols_array_2d());
-            self.shader.uniform("view", view.to_cols_array_2d());
-            self.shader.uniform("model", model);
-            self.shader.uniform(
-                "diffuse_texture",
-                o.diffuse.clone().unwrap_or(graphics::Texture::empty()),
-            );
-            self.shader.uniform(
-                "normal_texture",
-                o.normal.clone().unwrap_or(graphics::Texture::empty()),
-            );
-            self.shader
-                .uniform("has_diffuse_texture", o.diffuse.is_some());
-            self.shader
-                .uniform("has_normal_texture", o.normal.is_some());
-            self.shader
-                .uniform("base_diffuse_color", o.base_diffuse_color);
-            self.shader
-                .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+            // self.shader
+            //     .uniform("perspective", perspective.to_cols_array_2d());
+            // self.shader.uniform("view", view.to_cols_array_2d());
+            // self.shader.uniform("model", model);
+            // self.shader.uniform(
+            //     "diffuse_texture",
+            //     o.diffuse.clone().unwrap_or(graphics::Texture::empty()),
+            // );
+            // self.shader.uniform(
+            //     "normal_texture",
+            //     o.normal.clone().unwrap_or(graphics::Texture::empty()),
+            // );
+            // self.shader
+            //     .uniform("has_diffuse_texture", o.diffuse.is_some());
+            // self.shader
+            //     .uniform("has_normal_texture", o.normal.is_some());
+            // self.shader
+            //     .uniform("base_diffuse_color", o.base_diffuse_color);
+            // self.shader
+            //     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
 
-            if let Some(geometry) = self.world.geometries.get(o.geometry_id) {
-                frame.render(geometry, &self.shader);
-            }
+            // if let Some(mesh) = self.meshes.get(o.geometry_id) {
+            //     frame.render(mesh, &self.shader);
+            // }
         }
     }
 }

@@ -1,5 +1,5 @@
-mod geometry;
-pub use geometry::Mesh;
+mod mesh;
+pub use mesh::Mesh;
 
 pub mod texture;
 pub use texture::Texture;
@@ -23,7 +23,7 @@ impl Frame {
         }
     }
 
-    pub fn render(&self, geometry: &geometry::Mesh, shader: &Shader) {
+    pub fn render(&self, mesh: &mesh::Mesh, shader: &Shader) {
         unsafe {
             // gl::Enable(gl::BLEND);
             // gl::BlendEquation(gl::FUNC_ADD);
@@ -42,10 +42,10 @@ impl Frame {
             );
 
             shader.bind();
-            gl::BindVertexArray(geometry.vao);
+            gl::BindVertexArray(mesh.vao);
             gl::DrawElements(
                 gl::TRIANGLES,
-                geometry.element_count,
+                mesh.element_count,
                 gl::UNSIGNED_SHORT,
                 std::ptr::null(),
             );
