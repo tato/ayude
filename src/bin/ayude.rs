@@ -12,56 +12,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-// pub struct RenderObject {
-//     pub geometry_id: catalog::Id<graphics::Geometry>,
-//     pub diffuse: Option<graphics::Texture>,
-//     pub normal: Option<graphics::Texture>,
-//     pub base_diffuse_color: [f32; 4],
-// }
-// pub struct StaticEntity {
-//     pub transform: [[f32; 4]; 4],
-//     pub render_object: RenderObject,
-// }
-
-// pub struct World {
-//     pub statics: Vec<StaticEntity>,
-// }
-
-// impl World {
-//     fn upload(scene: gltf::GLTF) -> Result<Self, AyudeError> {
-//         let mut nodes = Vec::new();
-//         let mut geometries = Catalog::new();
-
-//         let textures = scene.images.iter().map(|image| {
-//             graphics::Texture::from_rgba(&scene.images_byte_buffer[image.offset..image.offset+image.size], image.width as i32, image.height as i32)
-//         }).collect::<Vec<_>>();
-//         for unode in scene.nodes {
-//             let transform = unode.transform;
-//             let base_diffuse_color = unode.base_diffuse_color;
-
-//             let umetry = &scene.geometries[unode.geometry_index];
-//             let geometry = graphics::Geometry::new(
-//                 &umetry.positions,
-//                 &umetry.normals,
-//                 &umetry.uvs,
-//                 &umetry.indices
-//             );
-//             let geometry_id = geometries.add(geometry);
-
-//             let diffuse = unode.diffuse.map(|index| {
-//                 textures[index].clone()
-//             });
-//             let normal =  unode.normal.map(|index| {
-//                 textures[index].clone()
-//             });
-
-//             let render_object = RenderObject{ geometry_id, diffuse, normal, base_diffuse_color };
-//             nodes.push(StaticEntity{ transform, render_object });
-//         }
-//         Ok(crate::World{ statics: nodes, geometries })
-//     }
-// }
-
 fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
     let result: Vec3 = [
         (-yaw).cos() * pitch.cos(),
