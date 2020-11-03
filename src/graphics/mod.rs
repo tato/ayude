@@ -1,11 +1,17 @@
 mod mesh;
-pub use mesh::Mesh;
+pub use mesh::{Primitive,Mesh};
 
 pub mod texture;
 pub use texture::Texture;
 
 mod shader;
 pub use shader::Shader;
+
+pub struct Material {
+    pub normal: Option<crate::catalog::Id<Texture>>,
+    pub diffuse: Option<crate::catalog::Id<Texture>>,
+    pub base_diffuse_color: [f32; 4],
+}
 
 pub struct Frame {
     viewport: (i32, i32, i32, i32),
@@ -23,7 +29,7 @@ impl Frame {
         }
     }
 
-    pub fn render(&self, mesh: &mesh::Mesh, shader: &Shader) {
+    pub fn render(&self, primitive: &mesh::Primitive, shader: &Shader) {
         unsafe {
             // gl::Enable(gl::BLEND);
             // gl::BlendEquation(gl::FUNC_ADD);
@@ -42,10 +48,10 @@ impl Frame {
             );
 
             shader.bind();
-            gl::BindVertexArray(mesh.vao);
+            gl::BindVertexArray(primitive.vao);
             gl::DrawElements(
                 gl::TRIANGLES,
-                mesh.element_count,
+                primitive.element_count,
                 gl::UNSIGNED_SHORT,
                 std::ptr::null(),
             );

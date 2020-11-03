@@ -5,23 +5,36 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    #[serde(default)]
     extensions_used: Vec<String>,
+    #[serde(default)]
     extensions_required: Vec<String>,
+    #[serde(default)]
     pub accessors: Vec<Accesor>,
+    #[serde(default)]
     pub animations: Vec<Animation>,
     pub asset: Asset,
+    #[serde(default)]
     pub buffers: Vec<Buffer>,
+    #[serde(default)]
     pub buffer_views: Vec<BufferView>,
+    #[serde(default)]
     pub cameras: Vec<Camera>,
     #[serde(default)]
     pub images: Vec<Image>,
+    #[serde(default)]
     pub materials: Vec<Material>,
+    #[serde(default)]
     pub meshes: Vec<Mesh>,
+    #[serde(default)]
     pub nodes: Vec<Node>,
     #[serde(default)]
     pub samplers: Vec<Sampler>,
+    #[serde(default)]
     pub scene: Option<usize>,
+    #[serde(default)]
     pub scenes: Vec<Scene>,
+    #[serde(default)]
     pub skins: Vec<Skin>,
     #[serde(default)]
     pub textures: Vec<Texture>,
@@ -29,9 +42,9 @@ pub struct Document {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Image {
-    uri: Option<String>,
-    mime_type: Option<String>,
-    buffer_view: Option<usize>,
+    pub uri: Option<String>,
+    pub mime_type: Option<String>,
+    pub buffer_view: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,26 +74,28 @@ pub struct Node {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Buffer {
-    byte_length: usize,
-    uri: String,
+    pub byte_length: usize,
+    pub uri: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferView {
-    buffer: usize,
-    byte_length: usize,
-    byte_offset: usize,
+    pub buffer: usize,
+    pub byte_length: usize,
+    pub byte_offset: usize,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Accesor {
-    buffer_view: usize,
-    component_type: usize,
-    #[serde(alias = "type")]
-    _type: String,
-    count: usize,
+    pub buffer_view: Option<usize>,
     #[serde(default)]
-    byte_offset: usize,
+    pub byte_offset: usize,
+    pub component_type: usize,
+    #[serde(default)]
+    pub normalized: bool,
+    pub count: usize,
+    #[serde(alias = "type")]
+    pub _type: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,22 +121,22 @@ pub struct Texture {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Material {
-    alpha_mode: Option<String>,
-    double_sided: Option<bool>,
-    pbr_metallic_roughness: PbrMetallicRoughness,
-    normal_texture: Option<TextureInfo>,
+    pub alpha_mode: Option<String>,
+    pub double_sided: Option<bool>,
+    pub pbr_metallic_roughness: PbrMetallicRoughness,
+    pub normal_texture: Option<TextureInfo>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PbrMetallicRoughness {
-    base_color_factor: [f32; 4],
-    base_color_texture: Option<TextureInfo>,
+    pub base_color_factor: [f32; 4],
+    pub base_color_texture: Option<TextureInfo>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextureInfo {
-    index: usize,
-    scale: Option<f32>,
+    pub index: usize,
+    pub scale: Option<f32>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,10 +149,10 @@ pub struct Mesh {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Primitive {
-    indices: usize,
-    material: usize,
-    mode: Option<usize>,
-    attributes: HashMap<String, usize>,
+    pub indices: usize,
+    pub material: usize,
+    pub mode: Option<usize>,
+    pub attributes: HashMap<String, usize>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,6 +163,22 @@ pub struct Scene {
 pub struct GLTF {
     pub document: Document,
     gltf_base_folder: String,
+}
+
+impl GLTF {
+    pub fn load_buffers(&self) -> Result<Vec<Vec<u8>>, AyudeError> {
+        use std::io::Read;
+        let buffers: Vec<Vec<u8>> = self.document.buffers.iter().map(|b| {
+            let mut result = Vec::new();
+            std::fs::File::open(format!("{}{}", self.gltf_base_folder, b.uri))?.read_to_end(&mut result)?;
+            Ok(result)
+        }).collect::<Result<_, AyudeError>>()?;
+        Ok(buffers)
+    }
+    pub fn load_image(&self, uri: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, AyudeError> {
+        let image_file_name = format!("{}{}", self.gltf_base_folder, uri);
+        Ok(image::open(&image_file_name)?.into_rgba())
+    }
 }
 
 pub fn load(file_name: &str) -> Result<GLTF, AyudeError> {

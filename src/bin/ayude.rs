@@ -78,7 +78,6 @@ struct Entity {
     mesh: Option<catalog::Id<graphics::Mesh>>,
     transform: [[f32; 4]; 4],
 }
-struct Material {}
 
 pub struct World {
     camera_position: Vec3,
@@ -90,7 +89,7 @@ pub struct World {
     shader: graphics::Shader,
 
     meshes: Catalog<graphics::Mesh>,
-    materials: Catalog<Material>,
+    materials: Catalog<graphics::Material>,
     textures: Catalog<graphics::Texture>,
     entities: Catalog<Entity>,
 
@@ -134,6 +133,55 @@ impl World {
     fn add_gltf_entities(&mut self, gltf: &gltf::GLTF) {
         let doc = &gltf.document;
         let scene = &doc.scenes[doc.scene.unwrap_or(0)];
+        let buffers = gltf.load_buffers().expect("XD");
+
+        let add_texture = |world: &mut World, index: usize| {
+            let image = &doc.images[index];
+            if let Some(uri) = &image.uri {
+                let loaded = gltf.load_image(uri).expect("XD");
+                let width = loaded.width();
+                let height = loaded.height();
+                let bytes = image::DynamicImage::ImageRgba8(loaded).to_bytes();
+                world.textures.add(graphics::Texture::from_rgba(&bytes, width as i32, height as i32))
+            } else {
+                unimplemented!("Only relative uri image loading is implemented")
+            }
+        };
+
+        let add_material = |world: &mut World, index: usize| {
+            let material = &doc.materials[index];
+            let normal = material.normal_texture.as_ref().map(|info| add_texture(world, info.index));
+            let diffuse = material.pbr_metallic_roughness.base_color_texture.as_ref().map(|info| add_texture(world, info.index));
+            let base_diffuse_color = material.pbr_metallic_roughness.base_color_factor;
+            world.materials.add(graphics::Material{ normal, diffuse, base_diffuse_color })
+        };
+
+        let add_mesh = |world: &mut World, index: usize| {
+            macro_rules! accessor_get {
+                ($index:expr, $component:expr, $_type:expr, $element_size:expr) => {{
+                    let accessor = &doc.accessors[$index];
+                    debug_assert!(accessor.component_type == $component);
+                    debug_assert!(accessor._type == $_type);
+                    let view = &doc.buffer_views[accessor.buffer_view.expect("I NEED THIS TO BE HERE")];
+                    let buffer = &buffers[view.buffer][view.byte_offset..(view.byte_offset+view.byte_length)];
+                    unsafe {
+                        let ptr = std::mem::transmute(buffer.as_ptr());
+                        std::slice::from_raw_parts(ptr, buffer.len() / $element_size)
+                    }
+                }}
+            }
+            let mesh = &doc.meshes[index];
+            let primitives = mesh.primitives.iter().map(|primitive| {
+                let positions: &[[f32; 3]] = accessor_get!(primitive.attributes["POSITION"], 5126, "VEC3", 12);
+                let normals: &[[f32; 3]] = accessor_get!(primitive.attributes["NORMAL"], 5126, "VEC3", 12);
+                let uvs: &[[f32; 2]] = accessor_get!(primitive.attributes["TEXCOORD_0"], 5126, "VEC2", 8);
+                let indices: &[u16] = accessor_get!(primitive.indices, 5123, "SCALAR", 2);
+                let material = add_material(world, primitive.material);
+                graphics::Primitive::new(positions, normals, uvs, indices, material)
+            }).collect();
+            world.meshes.add(graphics::Mesh{ primitives })
+        };
+
         self.entities = scene
             .nodes
             .iter()
@@ -141,7 +189,7 @@ impl World {
             .map(|node| Entity {
                 children: node.children.iter().map(|&i| i.into()).collect(),
                 parent: catalog::Id::none(),
-                mesh: node.mesh.map(|i| i.into()),
+                mesh: node.mesh.map(|i| add_mesh(self, i)),
                 transform: {
                     let t = if let Some(m) = node.matrix {
                         Mat4::from_cols_array(&m)
@@ -167,14 +215,9 @@ impl World {
                 .map(|it| it.children.clone())
                 .unwrap_or_else(|| Vec::new());
             for child in children_ids {
-                self.entities.get(child).map(|c| c.parent = id);
+                self.entities.get_mut(child).map(|c| c.parent = id);
             }
         }
-        self.meshes = scene.nodes.iter()
-            .map(|&i| &doc.meshes[i])
-            .map(|node| graphics::Mesh::new(positions, normals, uvs, indices))
-        self.materials = ;
-        self.textures = ;
     }
 
     fn update(&mut self, delta: Duration) {
@@ -212,33 +255,36 @@ impl World {
             // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
             let model = entity.transform;
-            // todo! bring back
-            // let o = &entity.render_object;
+            if let Some(mesh) = self.meshes.get_opt(entity.mesh) {
+                for primitive in &mesh.primitives {
+                    let material = self.materials.get(primitive.material).expect("XD");
+                    let diffuse = self.textures.get_opt(material.diffuse);
+                    let normal = self.textures.get_opt( material.normal);
 
-            // self.shader
-            //     .uniform("perspective", perspective.to_cols_array_2d());
-            // self.shader.uniform("view", view.to_cols_array_2d());
-            // self.shader.uniform("model", model);
-            // self.shader.uniform(
-            //     "diffuse_texture",
-            //     o.diffuse.clone().unwrap_or(graphics::Texture::empty()),
-            // );
-            // self.shader.uniform(
-            //     "normal_texture",
-            //     o.normal.clone().unwrap_or(graphics::Texture::empty()),
-            // );
-            // self.shader
-            //     .uniform("has_diffuse_texture", o.diffuse.is_some());
-            // self.shader
-            //     .uniform("has_normal_texture", o.normal.is_some());
-            // self.shader
-            //     .uniform("base_diffuse_color", o.base_diffuse_color);
-            // self.shader
-            //     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+                    self.shader
+                        .uniform("perspective", perspective.to_cols_array_2d());
+                    self.shader.uniform("view", view.to_cols_array_2d());
+                    self.shader.uniform("model", model);
+                    self.shader.uniform(
+                        "diffuse_texture",
+                        diffuse.map(|it| it.clone()).unwrap_or(graphics::Texture::empty()),
+                    );
+                    self.shader.uniform(
+                        "normal_texture",
+                        normal.map(|it| it.clone()).unwrap_or(graphics::Texture::empty()),
+                    );
+                    self.shader
+                        .uniform("has_diffuse_texture", diffuse.is_some());
+                    self.shader
+                        .uniform("has_normal_texture", normal.is_some());
+                    self.shader
+                        .uniform("base_diffuse_color", material.base_diffuse_color);
+                    self.shader
+                        .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
 
-            // if let Some(mesh) = self.meshes.get(o.geometry_id) {
-            //     frame.render(mesh, &self.shader);
-            // }
+                    frame.render(primitive, &self.shader);
+                }
+            }
         }
     }
 }

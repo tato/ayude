@@ -87,7 +87,7 @@ impl Shader {
         unsafe {
             gl::UseProgram(self.id);
             let mut texture_offset = 0;
-            for (name, value) in &self.uniforms {
+            for (&name, value) in &self.uniforms {
                 let location =
                     gl::GetUniformLocation(self.id, format!("{}\0", name).as_ptr() as *const i8);
                 value.bind(location, &mut texture_offset);

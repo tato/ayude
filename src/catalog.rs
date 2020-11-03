@@ -54,7 +54,15 @@ impl<T> Catalog<T> {
         }
     }
 
-    pub fn get(&mut self, id: Id<T>) -> Option<&mut T> {
+    pub fn get(&self, id: Id<T>) -> Option<&T> {
+        self.items.get(&id)
+    }
+
+    pub fn get_opt(&self, id: Option<Id<T>>) -> Option<&T> {
+        id.and_then(|it| self.items.get(&it))
+    }
+
+    pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
         self.items.get_mut(&id)
     }
 
@@ -65,7 +73,7 @@ impl<T> Catalog<T> {
         id
     }
 
-    pub fn iter(&mut self) -> std::collections::hash_map::Values<'_, Id<T>, T> {
+    pub fn iter(&self) -> std::collections::hash_map::Values<'_, Id<T>, T> {
         self.items.values()
     }
 

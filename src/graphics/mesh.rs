@@ -1,14 +1,19 @@
-pub struct Mesh {
+pub struct Primitive {
     pub vao: u32,
     pub element_count: i32,
+    pub material: crate::catalog::Id<crate::graphics::Material>,
+}
+pub struct Mesh {
+    pub primitives: Vec<Primitive>
 }
 
-impl Mesh {
+impl Primitive {
     pub fn new(
         positions: &[[f32; 3]],
         normals: &[[f32; 3]],
         uvs: &[[f32; 2]],
         indices: &[u16],
+        material: crate::catalog::Id<crate::graphics::Material>,
     ) -> Self {
         assert!(positions.len() == normals.len() && positions.len() == uvs.len(),
             "There are different amounts of components for this Geometry\npositions[{}], normals[{}], uvs[{}]",
@@ -69,9 +74,10 @@ impl Mesh {
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
-            Mesh {
+            Self {
                 vao,
                 element_count: indices.len() as i32,
+                material
             }
         }
     }
