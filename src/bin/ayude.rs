@@ -262,11 +262,11 @@ impl World {
                     self.shader.uniform("model", model);
                     self.shader.uniform(
                         "diffuse_texture",
-                        diffuse.map(|it| it.clone()).unwrap_or(graphics::Texture::empty()),
+                        diffuse.cloned().unwrap_or(graphics::Texture::empty()),
                     );
                     self.shader.uniform(
                         "normal_texture",
-                        normal.map(|it| it.clone()).unwrap_or(graphics::Texture::empty()),
+                        normal.cloned().unwrap_or(graphics::Texture::empty()),
                     );
                     self.shader
                         .uniform("has_diffuse_texture", diffuse.is_some());
@@ -285,7 +285,20 @@ impl World {
 }
 
 fn main() {
-    // TODO: gui panic -> std::panic::set_hook(Box::new(|_| { }));
+    std::panic::set_hook(Box::new(|panic_info| {
+        let mut lines = vec![];
+        if let Some(message) = panic_info.payload().downcast_ref::<String>() {
+            lines.push(message.to_string());
+        }
+        if let Some(message) = panic_info.payload().downcast_ref::<&str>() {
+            lines.push(message.to_string());
+        }
+        if let Some(location) = panic_info.location() {
+            let loc = format!("[{},{}] {}", location.line(), location.column(), location.file());
+            lines.push(loc);
+        }
+        msgbox::create("Error", &lines.join("\n"), msgbox::IconType::Error);
+    }));
 
     let event_loop = EventLoop::new();
     let window_builder = WindowBuilder::new()
