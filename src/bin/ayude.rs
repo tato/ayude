@@ -71,9 +71,9 @@ impl World {
             physics,
         };
 
-        // let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
+        let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
         // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
-        let gltf_file_name = "samples/physicstest.gltf";
+        // let gltf_file_name = "samples/physicstest.gltf";
         let gltf = gltf::load(gltf_file_name).unwrap();
         world.add_gltf_entities(&gltf);
 
@@ -92,7 +92,11 @@ impl World {
                 let width = loaded.width();
                 let height = loaded.height();
                 let bytes = image::DynamicImage::ImageRgba8(loaded).to_bytes();
-                world.textures.add(graphics::Texture::from_rgba(&bytes, width as i32, height as i32))
+                world.textures.add(graphics::Texture::from_rgba(
+                    &bytes,
+                    width as i32,
+                    height as i32,
+                ))
             } else {
                 unimplemented!("Only relative uri image loading is implemented")
             }
@@ -100,10 +104,21 @@ impl World {
 
         let add_material = |world: &mut World, index: usize| {
             let material = &doc.materials[index];
-            let normal = material.normal_texture.as_ref().map(|info| add_texture(world, info.index));
-            let diffuse = material.pbr_metallic_roughness.base_color_texture.as_ref().map(|info| add_texture(world, info.index));
+            let normal = material
+                .normal_texture
+                .as_ref()
+                .map(|info| add_texture(world, info.index));
+            let diffuse = material
+                .pbr_metallic_roughness
+                .base_color_texture
+                .as_ref()
+                .map(|info| add_texture(world, info.index));
             let base_diffuse_color = material.pbr_metallic_roughness.base_color_factor;
-            world.materials.add(graphics::Material{ normal, diffuse, base_diffuse_color })
+            world.materials.add(graphics::Material {
+                normal,
+                diffuse,
+                base_diffuse_color,
+            })
         };
 
         let add_mesh = |world: &mut World, index: usize| {
@@ -112,24 +127,33 @@ impl World {
                     let accessor = &doc.accessors[$index];
                     debug_assert!(accessor.component_type == $component);
                     debug_assert!(accessor._type == $_type);
-                    let view = &doc.buffer_views[accessor.buffer_view.expect("I NEED THIS TO BE HERE")];
-                    let buffer = &buffers[view.buffer][view.byte_offset..(view.byte_offset+view.byte_length)];
+                    let view =
+                        &doc.buffer_views[accessor.buffer_view.expect("I NEED THIS TO BE HERE")];
+                    let buffer = &buffers[view.buffer]
+                        [view.byte_offset..(view.byte_offset + view.byte_length)];
                     unsafe {
                         let ptr = std::mem::transmute(buffer.as_ptr());
                         std::slice::from_raw_parts(ptr, buffer.len() / $element_size)
                     }
-                }}
+                }};
             }
             let mesh = &doc.meshes[index];
-            let primitives = mesh.primitives.iter().map(|primitive| {
-                let positions: &[[f32; 3]] = accessor_get!(primitive.attributes["POSITION"], 5126, "VEC3", 12);
-                let normals: &[[f32; 3]] = accessor_get!(primitive.attributes["NORMAL"], 5126, "VEC3", 12);
-                let uvs: &[[f32; 2]] = accessor_get!(primitive.attributes["TEXCOORD_0"], 5126, "VEC2", 8);
-                let indices: &[u16] = accessor_get!(primitive.indices, 5123, "SCALAR", 2);
-                let material = add_material(world, primitive.material);
-                graphics::Primitive::new(positions, normals, uvs, indices, material)
-            }).collect();
-            world.meshes.add(graphics::Mesh{ primitives })
+            let primitives = mesh
+                .primitives
+                .iter()
+                .map(|primitive| {
+                    let positions: &[[f32; 3]] =
+                        accessor_get!(primitive.attributes["POSITION"], 5126, "VEC3", 12);
+                    let normals: &[[f32; 3]] =
+                        accessor_get!(primitive.attributes["NORMAL"], 5126, "VEC3", 12);
+                    let uvs: &[[f32; 2]] =
+                        accessor_get!(primitive.attributes["TEXCOORD_0"], 5126, "VEC2", 8);
+                    let indices: &[u16] = accessor_get!(primitive.indices, 5123, "SCALAR", 2);
+                    let material = add_material(world, primitive.material);
+                    graphics::Primitive::new(positions, normals, uvs, indices, material)
+                })
+                .collect();
+            world.meshes.add(graphics::Mesh { primitives })
         };
 
         self.entities = scene
@@ -204,7 +228,7 @@ impl World {
                 for primitive in &mesh.primitives {
                     let material = self.materials.get(primitive.material).expect("XD");
                     let diffuse = self.textures.get_opt(material.diffuse);
-                    let normal = self.textures.get_opt( material.normal);
+                    let normal = self.textures.get_opt(material.normal);
 
                     self.shader
                         .uniform("perspective", perspective.to_cols_array_2d());
@@ -220,8 +244,7 @@ impl World {
                     );
                     self.shader
                         .uniform("has_diffuse_texture", diffuse.is_some());
-                    self.shader
-                        .uniform("has_normal_texture", normal.is_some());
+                    self.shader.uniform("has_normal_texture", normal.is_some());
                     self.shader
                         .uniform("base_diffuse_color", material.base_diffuse_color);
                     self.shader
@@ -236,6 +259,10 @@ impl World {
 
 fn main() {
     std::panic::set_hook(Box::new(|panic_info| {
+        // todo!
+        // window.window().set_cursor_grab(false).unwrap();
+        // window.window().set_cursor_visible(true);
+        
         let mut lines = vec![];
         if let Some(message) = panic_info.payload().downcast_ref::<String>() {
             lines.push(message.to_string());
@@ -244,7 +271,12 @@ fn main() {
             lines.push(message.to_string());
         }
         if let Some(location) = panic_info.location() {
-            let loc = format!("[{},{}] {}", location.line(), location.column(), location.file());
+            let loc = format!(
+                "[{},{}] {}",
+                location.line(),
+                location.column(),
+                location.file()
+            );
             lines.push(loc);
         }
         msgbox::create("Error", &lines.join("\n"), msgbox::IconType::Error);

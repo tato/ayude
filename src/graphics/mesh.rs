@@ -4,7 +4,7 @@ pub struct Primitive {
     pub material: crate::catalog::Id<crate::graphics::Material>,
 }
 pub struct Mesh {
-    pub primitives: Vec<Primitive>
+    pub primitives: Vec<Primitive>,
 }
 
 impl Primitive {
@@ -77,7 +77,7 @@ impl Primitive {
             Self {
                 vao,
                 element_count: indices.len() as i32,
-                material
+                material,
             }
         }
     }
@@ -89,9 +89,21 @@ impl Drop for Primitive {
             gl::BindVertexArray(self.vao);
 
             let mut buffer_ids: [i32; 4] = [0; 4];
-            gl::GetVertexAttribiv(0, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[0]);
-            gl::GetVertexAttribiv(1, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[1]);
-            gl::GetVertexAttribiv(2, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[2]);
+            gl::GetVertexAttribiv(
+                0,
+                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                &mut buffer_ids[0],
+            );
+            gl::GetVertexAttribiv(
+                1,
+                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                &mut buffer_ids[1],
+            );
+            gl::GetVertexAttribiv(
+                2,
+                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                &mut buffer_ids[2],
+            );
             gl::GetIntegerv(gl::ELEMENT_ARRAY_BUFFER_BINDING, &mut buffer_ids[3]);
             gl::DeleteBuffers(4, std::mem::transmute(&buffer_ids as *const i32));
 

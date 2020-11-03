@@ -1,4 +1,3 @@
-use crate::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -166,23 +165,42 @@ pub struct GLTF {
 }
 
 impl GLTF {
-    pub fn load_buffers(&self) -> Result<Vec<Vec<u8>>, AyudeError> {
+    pub fn load_buffers(&self) -> Result<Vec<Vec<u8>>, GLTFError> {
         use std::io::Read;
-        let buffers: Vec<Vec<u8>> = self.document.buffers.iter().map(|b| {
-            let mut result = Vec::new();
-            std::fs::File::open(format!("{}{}", self.gltf_base_folder, b.uri))?.read_to_end(&mut result)?;
-            Ok(result)
-        }).collect::<Result<_, AyudeError>>()?;
+        let buffers: Vec<Vec<u8>> = self
+            .document
+            .buffers
+            .iter()
+            .map(|b| {
+                let mut result = Vec::new();
+                let file_name = format!("{}{}", self.gltf_base_folder, b.uri);
+                std::fs::File::open(&file_name)
+                    .and_then(|mut it| it.read_to_end(&mut result))
+                    .map_err(|_| GLTFError::FileSystemRead { file_name })?;
+                Ok(result)
+            })
+            .collect::<Result<_, GLTFError>>()?;
         Ok(buffers)
     }
-    pub fn load_image(&self, uri: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, AyudeError> {
-        let image_file_name = format!("{}{}", self.gltf_base_folder, uri);
-        Ok(image::open(&image_file_name)?.into_rgba())
+
+    pub fn load_image(
+        &self,
+        uri: &str,
+    ) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, GLTFError> {
+        let file_name = format!("{}{}", self.gltf_base_folder, uri);
+        Ok(image::open(&file_name)
+            .map_err(|_| GLTFError::FileSystemRead { file_name })?
+            .into_rgba())
     }
 }
 
-pub fn load(file_name: &str) -> Result<GLTF, AyudeError> {
-    let document: Document = serde_json::from_str(&std::fs::read_to_string(file_name)?)?;
+pub fn load(file_name: &str) -> Result<GLTF, GLTFError> {
+    let file = std::fs::read_to_string(file_name).map_err(|_| GLTFError::FileSystemRead {
+        file_name: file_name.to_string(),
+    })?;
+    let document: Document = serde_json::from_str(&file).map_err(|e| GLTFError::FormatParse {
+        reason: e.to_string(),
+    })?;
 
     assert!(
         document
@@ -209,4 +227,10 @@ pub fn load(file_name: &str) -> Result<GLTF, AyudeError> {
         document,
         gltf_base_folder,
     })
+}
+
+#[derive(Debug)]
+pub enum GLTFError {
+    FileSystemRead { file_name: String },
+    FormatParse { reason: String },
 }

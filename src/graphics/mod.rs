@@ -1,5 +1,5 @@
 mod mesh;
-pub use mesh::{Primitive,Mesh};
+pub use mesh::{Mesh, Primitive};
 
 pub mod texture;
 pub use texture::Texture;
