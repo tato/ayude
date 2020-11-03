@@ -38,11 +38,10 @@ impl Texture {
     }
 }
 
-// todo!
-// impl Drop for Texture {
-//     fn drop(&mut self) {
-//         if 1 == rc::Rc::strong_count(&self.id) {
-//             unsafe { gl::DeleteTextures(1, &self.id); }
-//         }
-//     }
-// }
+impl Drop for Texture {
+    fn drop(&mut self) {
+        if 1 == rc::Rc::strong_count(&self.id) {
+            unsafe { gl::DeleteTextures(1, self.id.as_ref()); }
+        }
+    }
+}

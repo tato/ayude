@@ -249,11 +249,6 @@ impl World {
         );
 
         for entity in self.entities.iter() {
-            // let scale = Matrix4::from_scale(100.0);
-            // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
-            // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
-            // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
-
             let model = entity.transform;
             if let Some(mesh) = self.meshes.get_opt(entity.mesh) {
                 for primitive in &mesh.primitives {

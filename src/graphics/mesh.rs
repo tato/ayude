@@ -83,24 +83,19 @@ impl Primitive {
     }
 }
 
-// todo!
-// impl Drop for Geometry {
-//     fn drop(&mut self) {
-//         unsafe {
-//             // glBindVertexArray(Mesh->MeshID);
-//             //
-//             // int32 BufferIDs[4];
-//             // glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs);
-//             // glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+1);
-//             // glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, BufferIDs+2);
-//             // glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,                BufferIDs+3);
-//             // glDeleteBuffers(4, (uint32 *)BufferIDs);
-//             //
-//             // glBindVertexArray(0);
+impl Drop for Primitive {
+    fn drop(&mut self) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
 
-//             gl::BindVertexArray(self.vao);
+            let mut buffer_ids: [i32; 4] = [0; 4];
+            gl::GetVertexAttribiv(0, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[0]);
+            gl::GetVertexAttribiv(1, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[1]);
+            gl::GetVertexAttribiv(2, gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &mut buffer_ids[2]);
+            gl::GetIntegerv(gl::ELEMENT_ARRAY_BUFFER_BINDING, &mut buffer_ids[3]);
+            gl::DeleteBuffers(4, std::mem::transmute(&buffer_ids as *const i32));
 
-//             gl::BindVertexArray(0);
-//         }
-//     }
-// }
+            gl::BindVertexArray(0);
+        }
+    }
+}
