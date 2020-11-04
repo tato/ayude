@@ -180,7 +180,7 @@ impl World {
         let entity_ids = self
             .entities
             .iter_ids()
-            .map(|it| it.clone())
+            .cloned()
             .collect::<Vec<_>>();
         for id in entity_ids {
             let children_ids = self
@@ -195,7 +195,7 @@ impl World {
     }
 
     fn update(&mut self, delta: Duration) {
-        self.physics.step(); // TODO! once every 1/60th second. fixed timestep!!
+        self.physics.update(delta);
 
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
         let right_direction = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();

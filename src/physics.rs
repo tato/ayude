@@ -4,6 +4,7 @@ use rapier3d::{
 };
 
 pub struct PhysicsState {
+    fixed_step_accumulator: f32,
     physics_pipeline: PhysicsPipeline,
     gravity: rapier3d::na::Vector3<f32>,
     integration_parameters: IntegrationParameters,
@@ -25,6 +26,7 @@ impl PhysicsState {
         let colliders = ColliderSet::new();
         let joints = JointSet::new();
         PhysicsState {
+            fixed_step_accumulator: 0.0,
             physics_pipeline,
             gravity,
             integration_parameters,
@@ -48,5 +50,13 @@ impl PhysicsState {
             &mut self.joints,
             &event_handler,
         );
+    }
+
+    pub fn update(&mut self, delta: std::time::Duration) {
+        self.fixed_step_accumulator += delta.as_secs_f32();
+        while self.fixed_step_accumulator > 0.1 {
+            self.fixed_step_accumulator -= 0.1;
+            self.step();
+        }
     }
 }
