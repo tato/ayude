@@ -54,8 +54,8 @@ impl PhysicsState {
 
     pub fn update(&mut self, delta: std::time::Duration) {
         self.fixed_step_accumulator += delta.as_secs_f32();
-        while self.fixed_step_accumulator > 0.1 {
-            self.fixed_step_accumulator -= 0.1;
+        while self.fixed_step_accumulator > self.integration_parameters.dt() {
+            self.fixed_step_accumulator -= self.integration_parameters.dt();
             self.step();
         }
     }
