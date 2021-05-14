@@ -5,7 +5,5 @@ pub use error::AyudeError;
 pub mod gltf;
 pub mod graphics;
 
-pub mod physics;
-
 pub mod catalog;
 pub use catalog::Catalog;

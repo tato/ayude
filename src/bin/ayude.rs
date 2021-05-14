@@ -42,8 +42,6 @@ pub struct World {
     materials: Catalog<graphics::Material>,
     textures: Catalog<graphics::Texture>,
     entities: Catalog<Entity>,
-
-    physics: physics::PhysicsState,
 }
 
 impl World {
@@ -51,8 +49,6 @@ impl World {
         static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
-
-        let physics = physics::PhysicsState::new();
 
         let mut world = World {
             camera_position: [0.0, 0.0, 0.0].into(),
@@ -67,13 +63,9 @@ impl World {
             materials: Catalog::new(),
             textures: Catalog::new(),
             entities: Catalog::new(),
-
-            physics,
         };
 
-        let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
-        // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
-        // let gltf_file_name = "samples/physicstest.gltf";
+        let gltf_file_name = "samples/physicstest.gltf";
         let gltf = gltf::load(gltf_file_name).unwrap();
         world.add_gltf_entities(&gltf);
 
@@ -195,8 +187,6 @@ impl World {
     }
 
     fn update(&mut self, delta: Duration) {
-        self.physics.update(delta);
-
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
         let right_direction = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
 
