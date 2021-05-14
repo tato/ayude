@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-pub struct Catalog<T> { 
+pub struct Catalog<T> {
     items: HashMap<Id<T>, T>,
     counter: u64,
 }
@@ -24,7 +24,7 @@ impl<T> Catalog<T> {
             counter: 0,
         }
     }
- 
+
     pub fn get(&self, id: Id<T>) -> Option<&T> {
         self.items.get(&id)
     }
@@ -56,7 +56,6 @@ impl<T> Catalog<T> {
         self.items.iter_mut()
     }
 }
-
 
 pub struct Id<T>(u64, PhantomData<T>);
 

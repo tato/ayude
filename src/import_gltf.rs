@@ -1,5 +1,3 @@
-
-
 use image::EncodableLayout;
 
 use crate::{
@@ -36,7 +34,7 @@ struct Importer<'catalogs> {
 }
 
 impl<'catalogs> Importer<'catalogs> {
-    fn import(&mut self,   document: ::gltf::Document) {
+    fn import(&mut self, document: ::gltf::Document) {
         let scene = document.default_scene().unwrap();
         for node in scene.nodes() {
             self.import_gltf_node(node, None);
@@ -48,7 +46,7 @@ impl<'catalogs> Importer<'catalogs> {
             let data = &self.images[texture.source().index()];
             let loaded = image::load_from_memory(&data.pixels).unwrap();
             let width = data.width;
-            let height = data.height; 
+            let height = data.height;
             let rgba = loaded.into_rgba();
             let bytes = rgba.as_bytes();
             self.textures

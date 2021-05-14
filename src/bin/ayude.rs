@@ -1,5 +1,8 @@
-use ayude::{Catalog, Entity, graphics::{self}, import_gltf};
-use glam::{Vec3};
+use ayude::{
+    graphics::{self},
+    import_gltf, Catalog, Entity,
+};
+use glam::Vec3;
 use glutin::{
     dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -22,7 +25,6 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
     .into();
     result.normalize()
 }
-
 
 pub struct World {
     camera_position: Vec3,
@@ -61,7 +63,13 @@ impl World {
         };
 
         let gltf_file_name = "samples/knight/knight.gltf";
-        import_gltf::import(gltf_file_name, &mut world.entities, &mut world.meshes, &mut world.materials, &mut world.textures);
+        import_gltf::import(
+            gltf_file_name,
+            &mut world.entities,
+            &mut world.meshes,
+            &mut world.materials,
+            &mut world.textures,
+        );
 
         world
     }

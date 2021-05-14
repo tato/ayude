@@ -4,8 +4,8 @@ pub use error::AyudeError;
 pub mod graphics;
 
 pub mod catalog;
-use catalog::Id;
 pub use catalog::Catalog;
+use catalog::Id;
 
 pub mod import_gltf;
 
