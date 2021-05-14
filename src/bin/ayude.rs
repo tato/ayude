@@ -31,8 +31,8 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
 
 pub struct World {
     camera_position: Vec3,
-    camera_yaw: f32,
-    camera_pitch: f32,
+    camera_yaw: f32, // radians
+    camera_pitch: f32, // radians
 
     movement: [f32; 2], // stores WASD input
 
@@ -51,8 +51,8 @@ impl World {
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
 
         let mut world = World {
-            camera_position: [0.0, 0.0, 0.0].into(),
-            camera_yaw: 0.0,
+            camera_position: [0.0, 0.0, 37.0].into(),
+            camera_yaw: std::f32::consts::PI,
             camera_pitch: 0.0,
 
             movement: [0.0, 0.0],
