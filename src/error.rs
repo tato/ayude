@@ -25,13 +25,6 @@ impl From<std::str::Utf8Error> for AyudeError {
         }
     }
 }
-impl From<serde_json::error::Error> for AyudeError {
-    fn from(e: serde_json::error::Error) -> Self {
-        AyudeError {
-            cause: e.to_string(),
-        }
-    }
-}
 impl From<image::error::ImageError> for AyudeError {
     fn from(e: image::error::ImageError) -> Self {
         AyudeError {

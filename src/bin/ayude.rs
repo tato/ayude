@@ -1,5 +1,5 @@
-use ayude::*;
-use glam::{Mat4, Quat, Vec3};
+use ayude::{Catalog, Entity, graphics::{self}, import_gltf};
+use glam::{Vec3};
 use glutin::{
     dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -7,6 +7,7 @@ use glutin::{
     window::WindowBuilder,
     Api, ContextBuilder, GlProfile, GlRequest, Robustness,
 };
+use graphics::Mesh;
 use std::{
     f32::consts::PI,
     time::{Duration, Instant},
@@ -22,12 +23,6 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
     result.normalize()
 }
 
-struct Entity {
-    children: Vec<catalog::Id<Entity>>,
-    parent: catalog::Id<Entity>,
-    mesh: Option<catalog::Id<graphics::Mesh>>,
-    transform: [[f32; 4]; 4],
-}
 
 pub struct World {
     camera_position: Vec3,
@@ -38,7 +33,7 @@ pub struct World {
 
     shader: graphics::Shader,
 
-    meshes: Catalog<graphics::Mesh>,
+    meshes: Catalog<Mesh>,
     materials: Catalog<graphics::Material>,
     textures: Catalog<graphics::Texture>,
     entities: Catalog<Entity>,
@@ -65,125 +60,10 @@ impl World {
             entities: Catalog::new(),
         };
 
-        let gltf_file_name = "samples/physicstest.gltf";
-        let gltf = gltf::load(gltf_file_name).unwrap();
-        world.add_gltf_entities(&gltf);
+        let gltf_file_name = "samples/knight/knight.gltf";
+        import_gltf::import(gltf_file_name, &mut world.entities, &mut world.meshes, &mut world.materials, &mut world.textures);
 
         world
-    }
-
-    fn add_gltf_entities(&mut self, gltf: &gltf::GLTF) {
-        let doc = &gltf.document;
-        let scene = &doc.scenes[doc.scene.unwrap_or(0)];
-        let buffers = gltf.load_buffers().expect("XD");
-
-        let add_texture = |world: &mut World, index: usize| {
-            let image = &doc.images[index];
-            if let Some(uri) = &image.uri {
-                let loaded = gltf.load_image(uri).expect("XD");
-                let width = loaded.width();
-                let height = loaded.height();
-                let bytes = image::DynamicImage::ImageRgba8(loaded).to_bytes();
-                world.textures.add(graphics::Texture::from_rgba(
-                    &bytes,
-                    width as i32,
-                    height as i32,
-                ))
-            } else {
-                unimplemented!("Only relative uri image loading is implemented")
-            }
-        };
-
-        let add_material = |world: &mut World, index: usize| {
-            let material = &doc.materials[index];
-            let normal = material
-                .normal_texture
-                .as_ref()
-                .map(|info| add_texture(world, info.index));
-            let diffuse = material
-                .pbr_metallic_roughness
-                .base_color_texture
-                .as_ref()
-                .map(|info| add_texture(world, info.index));
-            let base_diffuse_color = material.pbr_metallic_roughness.base_color_factor;
-            world.materials.add(graphics::Material {
-                normal,
-                diffuse,
-                base_diffuse_color,
-            })
-        };
-
-        let add_mesh = |world: &mut World, index: usize| {
-            macro_rules! accessor_get {
-                ($index:expr, $component:expr, $_type:expr, $element_size:expr) => {{
-                    let accessor = &doc.accessors[$index];
-                    debug_assert!(accessor.component_type == $component);
-                    debug_assert!(accessor._type == $_type);
-                    let view =
-                        &doc.buffer_views[accessor.buffer_view.expect("I NEED THIS TO BE HERE")];
-                    let buffer = &buffers[view.buffer]
-                        [view.byte_offset..(view.byte_offset + view.byte_length)];
-                    unsafe {
-                        let ptr = std::mem::transmute(buffer.as_ptr());
-                        std::slice::from_raw_parts(ptr, buffer.len() / $element_size)
-                    }
-                }};
-            }
-            let mesh = &doc.meshes[index];
-            let primitives = mesh
-                .primitives
-                .iter()
-                .map(|primitive| {
-                    let positions: &[[f32; 3]] =
-                        accessor_get!(primitive.attributes["POSITION"], 5126, "VEC3", 12);
-                    let normals: &[[f32; 3]] =
-                        accessor_get!(primitive.attributes["NORMAL"], 5126, "VEC3", 12);
-                    let uvs: &[[f32; 2]] =
-                        accessor_get!(primitive.attributes["TEXCOORD_0"], 5126, "VEC2", 8);
-                    let indices: &[u16] = accessor_get!(primitive.indices, 5123, "SCALAR", 2);
-                    let material = add_material(world, primitive.material);
-                    graphics::Primitive::new(positions, normals, uvs, indices, material)
-                })
-                .collect();
-            world.meshes.add(graphics::Mesh { primitives })
-        };
-
-        self.entities = scene
-            .nodes
-            .iter()
-            .map(|&i| &doc.nodes[i])
-            .map(|node| Entity {
-                children: node.children.iter().map(|&i| i.into()).collect(),
-                parent: catalog::Id::none(),
-                mesh: node.mesh.map(|i| add_mesh(self, i)),
-                transform: {
-                    let t = if let Some(m) = node.matrix {
-                        Mat4::from_cols_array(&m)
-                    } else {
-                        let t: Vec3 = node.translation.unwrap_or([0.0, 0.0, 0.0]).into();
-                        let r: Quat = node.rotation.unwrap_or([0.0, 0.0, 0.0, 1.0]).into();
-                        let s: Vec3 = node.scale.unwrap_or([1.0, 1.0, 1.0]).into();
-                        Mat4::from_translation(t) * Mat4::from_quat(r) * Mat4::from_scale(s)
-                    };
-                    t.to_cols_array_2d()
-                },
-            })
-            .collect();
-        let entity_ids = self
-            .entities
-            .iter_ids()
-            .cloned()
-            .collect::<Vec<_>>();
-        for id in entity_ids {
-            let children_ids = self
-                .entities
-                .get(id)
-                .map(|it| it.children.clone())
-                .unwrap_or_else(|| Vec::new());
-            for child in children_ids {
-                self.entities.get_mut(child).map(|c| c.parent = id);
-            }
-        }
     }
 
     fn update(&mut self, delta: Duration) {
@@ -252,7 +132,7 @@ fn main() {
         // todo!
         // window.window().set_cursor_grab(false).unwrap();
         // window.window().set_cursor_visible(true);
-        
+
         let mut lines = vec![];
         if let Some(message) = panic_info.payload().downcast_ref::<String>() {
             lines.push(message.to_string());
