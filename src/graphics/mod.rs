@@ -5,7 +5,7 @@ pub mod texture;
 pub use texture::Texture;
 
 mod shader;
-pub use shader::Shader;
+pub use shader::{Shader, ShaderError};
 
 pub struct Material {
     pub normal: Option<crate::catalog::Id<Texture>>,

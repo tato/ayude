@@ -1,4 +1,4 @@
-use crate::error::AyudeError;
+
 use std::collections::HashMap;
 
 pub struct Shader {
@@ -8,7 +8,7 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn from_sources(vertex: &str, fragment: &str) -> Result<Shader, AyudeError> {
+    pub fn from_sources(vertex: &str, fragment: &str) -> Result<Shader, ShaderError> {
         let vertex_id = create_single_shader_from_source(vertex.as_bytes(), gl::VERTEX_SHADER)?;
         let fragment_id =
             create_single_shader_from_source(fragment.as_bytes(), gl::FRAGMENT_SHADER)?;
@@ -33,6 +33,8 @@ impl Shader {
                 let mut info_log_length = 0;
                 gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut info_log_length);
 
+                let program_source_string = format!("VERTEX:\n{}\nFRAGMENT:\n{}", vertex, fragment);
+
                 if info_log_length > 0 {
                     let mut info_log = vec![0u8; info_log_length as usize];
                     gl::GetProgramInfoLog(
@@ -42,12 +44,15 @@ impl Shader {
                         (&mut info_log).as_mut_ptr() as *mut i8,
                     );
 
-                    let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?
-                        .to_str()?
+                    let error = std::ffi::CStr::from_bytes_with_nul(&info_log)
+                        .ok()
+                        .and_then(|s| s.to_str().ok())
+                        .unwrap_or("unknown error: info log had nul byte or non valid utf8 character")
                         .to_string();
-                    Err(error.into())
+                        
+                    Err(ShaderError::FailedCompile(error, program_source_string))
                 } else {
-                    Err("Program didn't compile and it didn't provide an info log".into())
+                    Err(ShaderError::FailedCompile("program didn't compile and it didn't provide an info log".to_string(), program_source_string))
                 }
             } else {
                 let mut count = 0;
@@ -136,7 +141,7 @@ impl Uniform for crate::graphics::Texture {
     }
 }
 
-fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u32, AyudeError> {
+fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u32, ShaderError> {
     unsafe {
         let shader_id = gl::CreateShader(shader_type);
         gl::ShaderSource(
@@ -160,6 +165,8 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
             let mut info_log_length = 0;
             gl::GetShaderiv(shader_id, gl::INFO_LOG_LENGTH, &mut info_log_length);
 
+            let source_string = std::str::from_utf8(source).unwrap_or("invalid source slice").to_string();
+
             if info_log_length > 0 {
                 let mut info_log = vec![0u8; info_log_length as usize];
                 gl::GetShaderInfoLog(
@@ -168,13 +175,21 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
                     std::ptr::null_mut(),
                     (&mut info_log).as_mut_ptr() as *mut i8,
                 );
-                let error = std::ffi::CStr::from_bytes_with_nul(&info_log)?
-                    .to_str()?
+                let error = std::ffi::CStr::from_bytes_with_nul(&info_log)
+                    .ok()
+                    .and_then(|s| s.to_str().ok())
+                    .unwrap_or("unknown error: info log had nul byte or non valid utf8 character")
                     .to_string();
-                Err(error.into())
+                Err(ShaderError::FailedCompile(error, source_string))
             } else {
-                Err("Program didn't compile and it didn't provide an info log".into())
+                Err(ShaderError::FailedCompile("program didn't compile and it didn't provide an info log".to_string(), source_string))
             }
         }
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ShaderError {
+    #[error("shader failed to compile with error: '{0}'\nshader source is: \n{1}")]
+    FailedCompile(String, String)
 }

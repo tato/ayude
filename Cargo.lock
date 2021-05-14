@@ -60,6 +60,7 @@ dependencies = [
  "glutin",
  "image",
  "msgbox",
+ "thiserror",
 ]
 
 [[package]]

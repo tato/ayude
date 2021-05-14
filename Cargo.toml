@@ -12,6 +12,7 @@ opt-level = 2
 debug = true
 
 [dependencies]
+thiserror = "1.0"
 glutin = "0"
 gl = "0"
 glam = "0"
