@@ -16,11 +16,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+
+const UP_VECTOR: [f32; 3] = [0.0, 1.0, 0.0];
+
 fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
     let result: Vec3 = [
-        (-yaw).cos() * pitch.cos(),
         (-yaw).sin() * pitch.cos(),
         pitch.sin(),
+        (-yaw).cos() * pitch.cos(),
     ]
     .into();
     result.normalize()
@@ -76,7 +79,7 @@ impl World {
 
     fn update(&mut self, delta: Duration) {
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
-        let right_direction = forward_direction.cross([0.0, 0.0, 1.0].into()).normalize();
+        let right_direction = forward_direction.cross(UP_VECTOR.into()).normalize();
 
         let speed = 100.0;
         self.camera_position += forward_direction * self.movement[1] * speed * delta.as_secs_f32();
@@ -85,7 +88,7 @@ impl World {
 
     fn render(&mut self, window_dimensions: (i32, i32)) {
         let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
-        let frame = graphics::Frame::start([0.0, 0.0, 1.0], window_dimensions);
+        let frame = graphics::Frame::start([0.1, 0.1, 0.1], window_dimensions);
 
         let perspective = glam::Mat4::perspective_rh_gl(
             std::f32::consts::PI / 3.0,
@@ -97,7 +100,7 @@ impl World {
         let view = glam::Mat4::look_at_rh(
             self.camera_position,
             self.camera_position + forward_direction,
-            [0.0, 0.0, 1.0].into(),
+            UP_VECTOR.into(),
         );
 
         for entity in self.entities.iter() {
