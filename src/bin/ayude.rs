@@ -16,7 +16,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-
 const UP_VECTOR: [f32; 3] = [0.0, 1.0, 0.0];
 
 fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
@@ -31,7 +30,7 @@ fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
 
 pub struct World {
     camera_position: Vec3,
-    camera_yaw: f32, // radians
+    camera_yaw: f32,   // radians
     camera_pitch: f32, // radians
 
     movement: [f32; 2], // stores WASD input
@@ -66,13 +65,16 @@ impl World {
         };
 
         let gltf_file_name = "samples/knight/knight.gltf";
-        import_gltf::import(
+        let errors = import_gltf::import(
             gltf_file_name,
             &mut world.entities,
             &mut world.meshes,
             &mut world.materials,
             &mut world.textures,
         );
+        for error in errors {
+            eprintln!("ERROR: {}", error);
+        }
 
         world
     }

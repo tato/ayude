@@ -1,7 +1,9 @@
+use crate::{catalog::Id, graphics::Material};
+
 pub struct Primitive {
     pub vao: u32,
     pub element_count: i32,
-    pub material: crate::catalog::Id<crate::graphics::Material>,
+    pub material: Id<Material>,
 }
 pub struct Mesh {
     pub primitives: Vec<Primitive>,
@@ -13,7 +15,7 @@ impl Primitive {
         normals: &[[f32; 3]],
         uvs: &[[f32; 2]],
         indices: &[u16],
-        material: crate::catalog::Id<crate::graphics::Material>,
+        material: Id<Material>,
     ) -> Self {
         assert!(positions.len() == normals.len() && positions.len() == uvs.len(),
             "There are different amounts of components for this Geometry\npositions[{}], normals[{}], uvs[{}]",

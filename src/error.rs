@@ -4,7 +4,7 @@ use crate::graphics::ShaderError;
 #[derive(Error, Debug)]
 pub enum AyudeError {
     #[error(transparent)]
-    Shader(#[from] ShaderError)
+    Shader(#[from] ShaderError),
 }
 
 // impl std::fmt::Display for AyudeError {

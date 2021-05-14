@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 pub struct Shader {
@@ -47,12 +46,17 @@ impl Shader {
                     let error = std::ffi::CStr::from_bytes_with_nul(&info_log)
                         .ok()
                         .and_then(|s| s.to_str().ok())
-                        .unwrap_or("unknown error: info log had nul byte or non valid utf8 character")
+                        .unwrap_or(
+                            "unknown error: info log had nul byte or non valid utf8 character",
+                        )
                         .to_string();
-                        
+
                     Err(ShaderError::FailedCompile(error, program_source_string))
                 } else {
-                    Err(ShaderError::FailedCompile("program didn't compile and it didn't provide an info log".to_string(), program_source_string))
+                    Err(ShaderError::FailedCompile(
+                        "program didn't compile and it didn't provide an info log".to_string(),
+                        program_source_string,
+                    ))
                 }
             } else {
                 let mut count = 0;
@@ -165,7 +169,9 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
             let mut info_log_length = 0;
             gl::GetShaderiv(shader_id, gl::INFO_LOG_LENGTH, &mut info_log_length);
 
-            let source_string = std::str::from_utf8(source).unwrap_or("invalid source slice").to_string();
+            let source_string = std::str::from_utf8(source)
+                .unwrap_or("invalid source slice")
+                .to_string();
 
             if info_log_length > 0 {
                 let mut info_log = vec![0u8; info_log_length as usize];
@@ -182,7 +188,10 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
                     .to_string();
                 Err(ShaderError::FailedCompile(error, source_string))
             } else {
-                Err(ShaderError::FailedCompile("program didn't compile and it didn't provide an info log".to_string(), source_string))
+                Err(ShaderError::FailedCompile(
+                    "program didn't compile and it didn't provide an info log".to_string(),
+                    source_string,
+                ))
             }
         }
     }
@@ -191,5 +200,5 @@ fn create_single_shader_from_source(source: &[u8], shader_type: u32) -> Result<u
 #[derive(thiserror::Error, Debug)]
 pub enum ShaderError {
     #[error("shader failed to compile with error: '{0}'\nshader source is: \n{1}")]
-    FailedCompile(String, String)
+    FailedCompile(String, String),
 }
