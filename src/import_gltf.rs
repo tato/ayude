@@ -2,7 +2,14 @@ use std::borrow::Cow;
 
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 
-use crate::{Catalog, Entity, catalog::Id, graphics::{Material, Mesh, Primitive, Texture, texture::{MagFilter, MinFilter, TextureFormat, TextureWrap}}};
+use crate::{
+    catalog::Id,
+    graphics::{
+        texture::{MagFilter, MinFilter, TextureFormat, TextureWrap},
+        Material, Mesh, Primitive, Texture,
+    },
+    Catalog, Entity, Skin,
+};
 
 pub fn import(
     file_name: &str,
@@ -10,6 +17,7 @@ pub fn import(
     meshes: &mut Catalog<Mesh>,
     materials: &mut Catalog<Material>,
     textures: &mut Catalog<Texture>,
+    skins: &mut Catalog<Skin>,
 ) -> Result<(), ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name).unwrap();
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
@@ -18,12 +26,15 @@ pub fn import(
         meshes_catalog: meshes,
         materials_catalog: materials,
         textures_catalog: textures,
+        skins_catalog: skins,
         blob: gltf.blob,
         buffers: vec![],
         images: vec![],
         textures: vec![],
         materials: vec![],
         meshes: vec![],
+        skins: vec![],
+        nodes: vec![],
         base_path,
     };
 
@@ -37,6 +48,7 @@ struct Importer<'catalogs> {
     meshes_catalog: &'catalogs mut Catalog<Mesh>,
     materials_catalog: &'catalogs mut Catalog<Material>,
     textures_catalog: &'catalogs mut Catalog<Texture>,
+    skins_catalog: &'catalogs mut Catalog<Skin>,
 
     // relate gltf indices to data or catalog ids
     buffers: Vec<Vec<u8>>,
@@ -44,6 +56,8 @@ struct Importer<'catalogs> {
     textures: Vec<Id<Texture>>,
     materials: Vec<Id<Material>>,
     meshes: Vec<Id<Mesh>>,
+    skins: Vec<Id<Skin>>,
+    nodes: Vec<Id<Entity>>,
 }
 
 impl<'catalogs> Importer<'catalogs> {
@@ -72,9 +86,18 @@ impl<'catalogs> Importer<'catalogs> {
             self.meshes.push(m);
         }
 
-        let scene = document.default_scene().unwrap();
-        for node in scene.nodes() {
-            self.import_gltf_node(node, None)?;
+        for node in document.nodes() {
+            let n = self.import_gltf_partial_node(node)?;
+            self.nodes.push(n);
+        }
+
+        for skin in document.skins() {
+            let s = self.import_gltf_skin(skin)?;
+            self.skins.push(s);
+        }
+
+        for node in document.nodes() {
+            self.complete_gltf_node_import(node);
         }
 
         Ok(())
@@ -201,7 +224,7 @@ impl<'catalogs> Importer<'catalogs> {
                 gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
                 gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
             });
-        
+
         if let Some(min_filter) = sampler.min_filter() {
             builder = builder.min_filter(match min_filter {
                 gltf::texture::MinFilter::Nearest => MinFilter::Nearest,
@@ -219,7 +242,7 @@ impl<'catalogs> Importer<'catalogs> {
                 gltf::texture::MagFilter::Linear => MagFilter::Linear,
             });
         }
-            
+
         let texture = builder.build();
 
         Ok(self.textures_catalog.add(texture))
@@ -310,10 +333,23 @@ impl<'catalogs> Importer<'catalogs> {
         Ok(self.meshes_catalog.add(Mesh { primitives }))
     }
 
-    fn import_gltf_node(
+    fn import_gltf_skin(&mut self, skin: gltf::Skin) -> Result<Id<Skin>, ImportGltfError> {
+        let mut joints = vec![];
+        for join in skin.joints() {
+            let joint_index = join.index();
+            joints.push(
+                self.nodes
+                    .get(joint_index)
+                    .copied()
+                    .ok_or(ImportGltfError::UnknownNodeIndex(joint_index))?,
+            );
+        }
+        Ok(self.skins_catalog.add(Skin { joints }))
+    }
+
+    fn import_gltf_partial_node(
         &mut self,
         node: gltf::Node,
-        parent: Option<Id<Entity>>,
     ) -> Result<Id<Entity>, ImportGltfError> {
         let mesh = match node.mesh() {
             Some(mesh) => self.meshes.get(mesh.index()).copied(),
@@ -321,23 +357,33 @@ impl<'catalogs> Importer<'catalogs> {
         };
         let entity = Entity {
             children: vec![],
-            parent,
+            parent: None,
+            skin: None,
             mesh,
             transform: node.transform().matrix(),
         };
-        let id = self.entities_catalog.add(entity);
+        Ok(self.entities_catalog.add(entity))
+    }
 
-        let mut children = vec![];
+    // todo! prevent possible panics
+    fn complete_gltf_node_import(&mut self, node: gltf::Node) {
         for child in node.children() {
-            let child_id = self.import_gltf_node(child, Some(id))?;
-            children.push(child_id);
+            self.entities_catalog
+                .get_mut(self.nodes[node.index()])
+                .unwrap()
+                .children
+                .push(self.nodes[child.index()]);
+            self.entities_catalog
+                .get_mut(self.nodes[child.index()])
+                .unwrap()
+                .parent = Some(self.nodes[node.index()]);
         }
-        self.entities_catalog
-            .get_mut(id)
-            .ok_or(ImportGltfError::Unreachable)?
-            .children = children;
-
-        Ok(id)
+        if let Some(skin) = node.skin() {
+            self.entities_catalog
+                .get_mut(self.nodes[node.index()])
+                .unwrap()
+                .skin = Some(self.skins[skin.index()]);
+        }
     }
 }
 
@@ -371,6 +417,8 @@ pub enum ImportGltfError {
     UnknownImageIndex(usize),
     #[error("unknown material index {0}")]
     UnknownMaterialIndex(usize),
+    #[error("unknown node index {0}")]
+    UnknownNodeIndex(usize),
     #[error("unreachable")]
     Unreachable,
 }

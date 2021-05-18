@@ -1,6 +1,7 @@
 use ayude::{
-    graphics::{self},
-    import_gltf, Catalog, Entity,
+    catalog,
+    graphics::{self, Primitive},
+    import_gltf, Catalog, Entity, Skin,
 };
 use glam::Vec3;
 use glutin::{
@@ -41,6 +42,9 @@ pub struct World {
     materials: Catalog<graphics::Material>,
     textures: Catalog<graphics::Texture>,
     entities: Catalog<Entity>,
+    skins: Catalog<Skin>,
+
+    // cube_mesh: catalog::Id<Mesh>,
 }
 
 impl World {
@@ -48,6 +52,12 @@ impl World {
         static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
+
+        let mut meshes = Catalog::new();
+
+        // let cube_mesh = meshes.add(Mesh {
+        //     primitives: vec![ get_cube_primitive() ],
+        // });
 
         let mut world = World {
             camera_position: [0.0, 0.0, 37.0].into(),
@@ -58,10 +68,13 @@ impl World {
 
             shader,
 
-            meshes: Catalog::new(),
+            meshes,
             materials: Catalog::new(),
             textures: Catalog::new(),
             entities: Catalog::new(),
+            skins: Catalog::new(),
+
+            // cube_mesh,
         };
 
         let gltf_file_name = "samples/knight/knight.gltf";
@@ -71,6 +84,7 @@ impl World {
             &mut world.meshes,
             &mut world.materials,
             &mut world.textures,
+            &mut world.skins,
         )
         .unwrap();
 
