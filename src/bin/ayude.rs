@@ -65,6 +65,7 @@ impl World {
         };
 
         let gltf_file_name = "samples/knight/knight.gltf";
+        let gltf_file_name = "samples/big_generator/scene.gltf";
         let errors = import_gltf::import(
             gltf_file_name,
             &mut world.entities,

@@ -1,4 +1,4 @@
-use std::{borrow::Cow};
+use std::borrow::Cow;
 
 use image::{EncodableLayout, GenericImageView, ImageError, ImageFormat};
 
@@ -103,7 +103,7 @@ impl<'catalogs> Importer<'catalogs> {
             }
             gltf::buffer::Source::Uri(uri) => {
                 if uri.starts_with("data:") {
-                    Ok(data_uri_to_bytes(uri)?)
+                    Ok(data_uri_to_bytes_and_type(uri)?.0)
                 } else {
                     Ok(std::fs::read(format!("{}/{}", self.base_path, uri))?)
                 }
@@ -118,24 +118,41 @@ impl<'catalogs> Importer<'catalogs> {
     ) -> Result<(Vec<u8>, usize, usize), ImportGltfError> {
         let (data, mime_type) = match image.source() {
             gltf::image::Source::Uri { uri, mime_type } => {
-                let data = if uri.starts_with("data:") {
-                    data_uri_to_bytes(uri)?
+                let (data, parsed_mt) = if uri.starts_with("data:") {
+                    data_uri_to_bytes_and_type(uri)?
                 } else {
-                    std::fs::read(&format!("{}/{}", self.base_path, uri))?
+                    let bytes = std::fs::read(&format!("{}/{}", self.base_path, uri))?;
+                    let format = if uri.ends_with(".png") {
+                        "image/png"
+                    } else if uri.ends_with(".jpg") || uri.ends_with(".jpeg") {
+                        "image/jpeg"
+                    } else {
+                        "application/octet-stream"
+                    };
+                    (bytes, format)
                 };
+                
+                let mime_type = match mime_type {
+                    Some(mt) => mt,
+                    None => parsed_mt
+                };
+
                 (Cow::from(data), mime_type)
             }
             gltf::image::Source::View { view, mime_type } => {
                 let buffer = &self.buffers[view.buffer().index()];
                 let data = &buffer[view.offset()..view.offset() + view.length()];
-                (Cow::from(data), Some(mime_type))
+                (Cow::from(data), mime_type)
             }
         };
 
         let format = match mime_type {
-            Some("image/jpeg") => Ok(ImageFormat::Jpeg),
-            Some("image/png") => Ok(ImageFormat::Png),
-            fmt => Err(ImportGltfError::UnknownImageFormat(fmt.map(str::to_string))),
+            "image/jpeg" => Ok(ImageFormat::Jpeg),
+            "image/png" => Ok(ImageFormat::Png),
+            fmt => Err(ImportGltfError::UnknownImageFormat(
+                fmt.to_string(),
+                image.index(),
+            )),
         }?;
 
         let loaded = image::load_from_memory_with_format(&data, format)
@@ -267,8 +284,10 @@ impl<'catalogs> Importer<'catalogs> {
     }
 }
 
-fn data_uri_to_bytes(uri: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    base64::decode(&uri[uri.find(",").unwrap_or(0) + 1..])
+fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::DecodeError> {
+    let bytes = base64::decode(&uri[uri.find(",").unwrap_or(0) + 1..])?;
+    let mt = &uri[uri.find(":").unwrap()+1..uri.find(";").unwrap()];
+    Ok((bytes, mt))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -279,8 +298,8 @@ pub enum ImportGltfError {
     Base64Error(#[from] base64::DecodeError),
     #[error("image loading failed for file '{0}': {1}")]
     ImageLoadingFailed(String, ImageError),
-    #[error("unknown image format: {0:?}")]
-    UnknownImageFormat(Option<String>),
+    #[error("unknown image format '{0:?}' for image {1}")]
+    UnknownImageFormat(String, usize),
     #[error("binary section of gltf not found")]
     BinSectionNotFound,
     #[error(
