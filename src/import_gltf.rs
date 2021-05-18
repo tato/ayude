@@ -1,12 +1,8 @@
 use std::borrow::Cow;
 
-use image::{EncodableLayout, GenericImageView, ImageError, ImageFormat};
+use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 
-use crate::{
-    catalog::Id,
-    graphics::{Material, Mesh, Primitive, Texture},
-    Catalog, Entity,
-};
+use crate::{Catalog, Entity, catalog::Id, graphics::{Material, Mesh, Primitive, Texture, texture::{MagFilter, MinFilter, TextureFormat, TextureWrap}}};
 
 pub fn import(
     file_name: &str,
@@ -16,7 +12,6 @@ pub fn import(
     textures: &mut Catalog<Texture>,
 ) -> Result<(), ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name).unwrap();
-    // let (document, buffers, images) = ::gltf::import(file_name).unwrap();
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
         entities_catalog: entities,
@@ -45,7 +40,7 @@ struct Importer<'catalogs> {
 
     // relate gltf indices to data or catalog ids
     buffers: Vec<Vec<u8>>,
-    images: Vec<(Vec<u8>, usize, usize)>,
+    images: Vec<(Vec<u8>, u32, u32, TextureFormat)>,
     textures: Vec<Id<Texture>>,
     materials: Vec<Id<Material>>,
     meshes: Vec<Id<Mesh>>,
@@ -100,11 +95,11 @@ impl<'catalogs> Importer<'catalogs> {
         }
     }
 
-    // result is (rgba bytes, width, height)
+    // result is (rgba bytes, width, height, format)
     fn import_gltf_image(
         &self,
         image: gltf::Image,
-    ) -> Result<(Vec<u8>, usize, usize), ImportGltfError> {
+    ) -> Result<(Vec<u8>, u32, u32, TextureFormat), ImportGltfError> {
         let (data, mime_type) = match image.source() {
             gltf::image::Source::Uri { uri, mime_type } => {
                 let (data, parsed_mt) = if uri.starts_with("data:") {
@@ -129,8 +124,20 @@ impl<'catalogs> Importer<'catalogs> {
                 (Cow::from(data), mime_type)
             }
             gltf::image::Source::View { view, mime_type } => {
-                let buffer = &self.buffers[view.buffer().index()];
-                let data = &buffer[view.offset()..view.offset() + view.length()];
+                let buffer_index = view.buffer().index();
+                let buffer = &self
+                    .buffers
+                    .get(buffer_index)
+                    .ok_or(ImportGltfError::UnknownBufferIndex(buffer_index))?;
+                let from = view.offset();
+                let to = view.offset() + view.length();
+                let data = buffer
+                    .get(from..to)
+                    .ok_or(ImportGltfError::BufferRangeOutOfBounds(
+                        buffer_index,
+                        from,
+                        to,
+                    ))?;
                 (Cow::from(data), mime_type)
             }
         };
@@ -144,21 +151,78 @@ impl<'catalogs> Importer<'catalogs> {
             )),
         }?;
 
-        let loaded = image::load_from_memory_with_format(&data, format)
+        let image = image::load_from_memory_with_format(&data, format)
             .map_err(|e| ImportGltfError::ImageLoadingFailed(image.index().to_string(), e))?;
-        let (w, h) = (loaded.width() as usize, loaded.height() as usize);
-        Ok((loaded.into_rgba().as_bytes().to_owned(), w, h))
+        match image {
+            DynamicImage::ImageRgb8(rgb) => Ok((
+                rgb.as_bytes().to_owned(),
+                rgb.width(),
+                rgb.height(),
+                TextureFormat::RGB,
+            )),
+            DynamicImage::ImageRgba8(rgba) => Ok((
+                rgba.as_bytes().to_owned(),
+                rgba.width(),
+                rgba.height(),
+                TextureFormat::RGBA,
+            )),
+            _ => {
+                let rgba = image.into_rgba();
+                Ok((
+                    rgba.as_bytes().to_owned(),
+                    rgba.width(),
+                    rgba.height(),
+                    TextureFormat::RGBA,
+                ))
+            }
+        }
     }
 
     fn import_gltf_texture(
         &mut self,
         texture: gltf::Texture,
     ) -> Result<Id<Texture>, ImportGltfError> {
-        let (data, width, height) = &self.images[texture.source().index()];
-        // TODO! samplers etc
-        Ok(self
-            .textures_catalog
-            .add(Texture::from_rgba(&data, *width as i32, *height as i32)))
+        let image_index = texture.source().index();
+        let (data, width, height, format) = &self
+            .images
+            .get(image_index)
+            .ok_or(ImportGltfError::UnknownImageIndex(image_index))?;
+
+        let sampler = texture.sampler();
+
+        let mut builder = Texture::builder(&data, *width as u16, *height as u16, *format)
+            .wrap_s(match sampler.wrap_s() {
+                gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
+                gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
+            })
+            .wrap_t(match sampler.wrap_t() {
+                gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
+                gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
+            });
+        
+        if let Some(min_filter) = sampler.min_filter() {
+            builder = builder.min_filter(match min_filter {
+                gltf::texture::MinFilter::Nearest => MinFilter::Nearest,
+                gltf::texture::MinFilter::Linear => MinFilter::Linear,
+                gltf::texture::MinFilter::NearestMipmapNearest => MinFilter::NearestMipmapNearest,
+                gltf::texture::MinFilter::LinearMipmapNearest => MinFilter::LinearMipmapNearest,
+                gltf::texture::MinFilter::NearestMipmapLinear => MinFilter::NearestMipmapLinear,
+                gltf::texture::MinFilter::LinearMipmapLinear => MinFilter::LinearMipmapNearest,
+            });
+        }
+
+        if let Some(mag_filter) = sampler.mag_filter() {
+            builder = builder.mag_filter(match mag_filter {
+                gltf::texture::MagFilter::Nearest => MagFilter::Nearest,
+                gltf::texture::MagFilter::Linear => MagFilter::Linear,
+            });
+        }
+            
+        let texture = builder.build();
+
+        Ok(self.textures_catalog.add(texture))
     }
 
     fn import_gltf_material(
@@ -231,7 +295,11 @@ impl<'catalogs> Importer<'catalogs> {
                 .collect::<Vec<_>>();
 
             let material = match primitive.material().index() {
-                Some(i) => self.materials[i],
+                Some(i) => self
+                    .materials
+                    .get(i)
+                    .copied()
+                    .ok_or(ImportGltfError::UnknownMaterialIndex(i))?,
                 None => self.import_gltf_material(primitive.material())?, // i'm importing the default material, which doesn't make much sense
             };
 
@@ -295,6 +363,14 @@ pub enum ImportGltfError {
         "required property '{0}' is missing for mesh with index {1} and primitive with index {2}"
     )]
     RequiredMeshPropertyMissing(&'static str, usize, usize),
+    #[error("unknown buffer index {0}")]
+    UnknownBufferIndex(usize),
+    #[error("buffer {0} has a view with range ({1}..{2}) that is out of bounds")]
+    BufferRangeOutOfBounds(usize, usize, usize),
+    #[error("unknown image index {0}")]
+    UnknownImageIndex(usize),
+    #[error("unknown material index {0}")]
+    UnknownMaterialIndex(usize),
     #[error("unreachable")]
     Unreachable,
 }

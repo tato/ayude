@@ -9,32 +9,17 @@ impl Texture {
     pub fn empty() -> Self {
         Texture { id: 0.into() } // todo! this is debug only!!!!
     }
-    pub fn from_rgba(rgba: &[u8], width: i32, height: i32) -> Self {
-        let mut id = 0u32;
-
-        unsafe {
-            gl::GenTextures(1, &mut id);
-            gl::BindTexture(gl::TEXTURE_2D, id);
-
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                gl::RGBA as i32,
-                width as i32,
-                height as i32,
-                0,
-                gl::RGBA,
-                gl::UNSIGNED_BYTE,
-                rgba.as_ptr() as *const std::ffi::c_void,
-            );
+    pub fn builder(data: &[u8], width: u16, height: u16, format: TextureFormat) -> TextureBuilder {
+        TextureBuilder {
+            data,
+            width: i32::from(width),
+            height: i32::from(height),
+            format,
+            wrap_s: TextureWrap::Repeat,
+            wrap_t: TextureWrap::Repeat,
+            min_filter: MinFilter::Linear,
+            mag_filter: MagFilter::Linear,
         }
-
-        Texture { id: id.into() }
     }
 }
 
@@ -45,5 +30,145 @@ impl Drop for Texture {
                 gl::DeleteTextures(1, self.id.as_ref());
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureFormat {
+    RGB,
+    RGBA,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureWrap {
+    ClampToEdge,
+    MirroredRepeat,
+    Repeat,
+}
+
+impl TextureWrap {
+    pub fn into_gl(self) -> u32 {
+        match self {
+            Self::ClampToEdge => gl::CLAMP_TO_EDGE,
+            Self::MirroredRepeat => gl::MIRRORED_REPEAT,
+            Self::Repeat => gl::REPEAT,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MinFilter {
+    Nearest,
+    Linear,
+    NearestMipmapNearest,
+    LinearMipmapNearest,
+    NearestMipmapLinear,
+    LinearMipmapLinear,
+}
+
+impl MinFilter {
+    pub fn into_gl(self) -> u32 {
+        match self {
+            Self::Nearest => gl::NEAREST,
+            Self::Linear => gl::LINEAR,
+            Self::NearestMipmapNearest => gl::NEAREST_MIPMAP_NEAREST,
+            Self::LinearMipmapNearest => gl::LINEAR_MIPMAP_NEAREST,
+            Self::NearestMipmapLinear => gl::NEAREST_MIPMAP_LINEAR,
+            Self::LinearMipmapLinear => gl::LINEAR_MIPMAP_LINEAR,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MagFilter {
+    Nearest,
+    Linear,
+}
+
+impl MagFilter {
+    pub fn into_gl(self) -> u32 {
+        match self {
+            Self::Nearest => gl::NEAREST,
+            Self::Linear => gl::LINEAR,
+        }
+    }
+}
+
+pub struct TextureBuilder<'data> {
+    data: &'data [u8],
+    width: i32,
+    height: i32,
+    format: TextureFormat,
+    wrap_s: TextureWrap,
+    wrap_t: TextureWrap,
+    min_filter: MinFilter,
+    mag_filter: MagFilter,
+}
+
+impl<'data> TextureBuilder<'data> {
+    pub fn build(self) -> Texture {
+        let mut id = 0u32;
+
+        let format = match self.format {
+            TextureFormat::RGB => gl::RGB,
+            TextureFormat::RGBA => gl::RGBA,
+        };
+
+        unsafe {
+            gl::GenTextures(1, &mut id);
+            gl::BindTexture(gl::TEXTURE_2D, id);
+
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_WRAP_S,
+                self.wrap_s.into_gl() as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_WRAP_T,
+                self.wrap_t.into_gl() as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MIN_FILTER,
+                self.min_filter.into_gl() as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MAG_FILTER,
+                self.mag_filter.into_gl() as i32,
+            );
+
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::COMPRESSED_RGBA as i32,
+                self.width,
+                self.height,
+                0,
+                format,
+                gl::UNSIGNED_BYTE,
+                self.data.as_ptr() as *const std::ffi::c_void,
+            );
+        }
+
+        Texture { id: id.into() }
+    }
+
+    pub fn wrap_s(mut self, wrap: TextureWrap) -> Self {
+        self.wrap_s = wrap;
+        self
+    }
+    pub fn wrap_t(mut self, wrap: TextureWrap) -> Self {
+        self.wrap_t = wrap;
+        self
+    }
+    pub fn min_filter(mut self, filter: MinFilter) -> Self {
+        self.min_filter = filter;
+        self
+    }
+    pub fn mag_filter(mut self, filter: MagFilter) -> Self {
+        self.mag_filter = filter;
+        self
     }
 }
