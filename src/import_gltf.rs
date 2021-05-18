@@ -14,7 +14,7 @@ pub fn import(
     meshes: &mut Catalog<Mesh>,
     materials: &mut Catalog<Material>,
     textures: &mut Catalog<Texture>,
-) -> Vec<ImportGltfError> {
+) -> Result<(), ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name).unwrap();
     // let (document, buffers, images) = ::gltf::import(file_name).unwrap();
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
@@ -32,11 +32,7 @@ pub fn import(
         base_path,
     };
 
-    let r = importer.import(gltf.document);
-    if let Err(e) = &r {
-        eprintln!("{}", e);
-    }
-    r.unwrap()
+    importer.import(gltf.document)
 }
 struct Importer<'catalogs> {
     blob: Option<Vec<u8>>,
@@ -56,12 +52,7 @@ struct Importer<'catalogs> {
 }
 
 impl<'catalogs> Importer<'catalogs> {
-    fn import(
-        &mut self,
-        document: gltf::Document,
-    ) -> Result<Vec<ImportGltfError>, ImportGltfError> {
-        let mut errors = vec![];
-
+    fn import(&mut self, document: gltf::Document) -> Result<(), ImportGltfError> {
         for buffer in document.buffers() {
             let b = self.import_gltf_buffer(buffer)?;
             self.buffers.push(b);
@@ -88,12 +79,10 @@ impl<'catalogs> Importer<'catalogs> {
 
         let scene = document.default_scene().unwrap();
         for node in scene.nodes() {
-            if let Err(e) = self.import_gltf_node(node, None) {
-                errors.push(e);
-            }
+            self.import_gltf_node(node, None)?;
         }
 
-        Ok(errors)
+        Ok(())
     }
 
     fn import_gltf_buffer(&mut self, buffer: gltf::Buffer) -> Result<Vec<u8>, ImportGltfError> {
@@ -131,10 +120,10 @@ impl<'catalogs> Importer<'catalogs> {
                     };
                     (bytes, format)
                 };
-                
+
                 let mime_type = match mime_type {
                     Some(mt) => mt,
-                    None => parsed_mt
+                    None => parsed_mt,
                 };
 
                 (Cow::from(data), mime_type)
@@ -286,7 +275,7 @@ impl<'catalogs> Importer<'catalogs> {
 
 fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::DecodeError> {
     let bytes = base64::decode(&uri[uri.find(",").unwrap_or(0) + 1..])?;
-    let mt = &uri[uri.find(":").unwrap()+1..uri.find(";").unwrap()];
+    let mt = &uri[uri.find(":").unwrap() + 1..uri.find(";").unwrap()];
     Ok((bytes, mt))
 }
 

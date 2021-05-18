@@ -65,17 +65,14 @@ impl World {
         };
 
         let gltf_file_name = "samples/knight/knight.gltf";
-        let gltf_file_name = "samples/big_generator/scene.gltf";
-        let errors = import_gltf::import(
+        import_gltf::import(
             gltf_file_name,
             &mut world.entities,
             &mut world.meshes,
             &mut world.materials,
             &mut world.textures,
-        );
-        for error in errors {
-            eprintln!("ERROR: {}", error);
-        }
+        )
+        .unwrap();
 
         world
     }
