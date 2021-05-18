@@ -11,6 +11,41 @@ use crate::{
     Catalog, Entity, Skin,
 };
 
+// notes:
+// for me, a gltf will only contain 1 entity, with 1 mesh, with 1 skin, with a set of
+// animations, textures and materials. the entity could be and in fact will probably
+// be a tree of nodes, but from outside it will seem a single object.
+// if possible, the set of nodes, meshes and skins in the gltf file should be
+// condensed into 1. if not, we'd have to choose 1 and discard the rest.
+//
+// in reality, a gltf should not import as an "Entity", it should maybe act as an
+// entity blueprint, or even forget the concept of entity and just import the mesh.
+//
+// another option would be to borrow the concept of a "scene" from the gltf. in that
+// case, the gltf would import into a list of "scenes", and the meshes, textures,
+// materials and so on could be shared between these "scenes". then, i'd have a
+// "SceneEntity" object that i could instantiate and would refer to one of these
+// "scenes" as a blueprint.
+//
+// one possible problem with this last approach could be the cleanup stage. if we
+// have so many meshes and textures and so on lying around with no reference to
+// their parent scene, we could end up with some storage issues when we no longer
+// need the scene. a mesh could be used by multiple scenes, so that stuff would
+// need to be checked before it's cleaned up. the solution to that is each
+// "scene" or entity blueprint or whatever having its own copy of a mesh, texture,
+// etc that it needs. OR these meshes, textures, etc being attached to certain
+// "stages" or "levels" of the game which know they need a set of scenes or
+// whatever. this might not be too hard, it could be inferred from the construction
+// of the levels themselves.
+//
+// the clearest of the fuzzy ideas floating around in my mind right now is:
+//   [gltf files] --level editor--> level file --engine loader--> [entity blueprints]
+// i don't have a semblance of a level editor right now, so the association between
+// multiple gltf files could be inferred from filesystem or some other simple system
+// for now. in the future if these are imported to the engine and stuff they will
+// have the possibility of deduping textures and so on, but for now the conclusion is
+// IMPORT SCENES FROM EACH GLTF FILE AND DON'T HAVE A GLOBAL MESH, TEXTURE, ETC THING
+
 pub fn import(
     file_name: &str,
     entities: &mut Catalog<Entity>,
