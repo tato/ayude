@@ -78,7 +78,7 @@ impl Shader {
                     );
 
                     let name = std::str::from_utf8_unchecked(&buffer[0..result_length as usize]);
-                    println!("{}: {} ({})", name, result_type, result_size);
+                    // println!("{}: {} ({})", name, result_type, result_size);
                 }
                 Ok(Shader {
                     id: program_id,

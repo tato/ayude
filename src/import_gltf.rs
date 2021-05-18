@@ -1,4 +1,6 @@
-use image::EncodableLayout;
+use std::{borrow::Cow};
+
+use image::{EncodableLayout, GenericImageView, ImageError, ImageFormat};
 
 use crate::{
     catalog::Id,
@@ -13,59 +15,144 @@ pub fn import(
     materials: &mut Catalog<Material>,
     textures: &mut Catalog<Texture>,
 ) -> Vec<ImportGltfError> {
-    let (document, buffers, images) = ::gltf::import(file_name).unwrap();
+    let gltf = gltf::Gltf::open(file_name).unwrap();
+    // let (document, buffers, images) = ::gltf::import(file_name).unwrap();
+    let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
-        entities,
-        meshes,
-        materials,
-        textures,
-        buffers,
-        images,
+        entities_catalog: entities,
+        meshes_catalog: meshes,
+        materials_catalog: materials,
+        textures_catalog: textures,
+        blob: gltf.blob,
+        buffers: vec![],
+        images: vec![],
+        textures: vec![],
+        materials: vec![],
+        meshes: vec![],
+        base_path,
     };
-    importer.import(document)
+
+    let r = importer.import(gltf.document);
+    if let Err(e) = &r {
+        eprintln!("{}", e);
+    }
+    r.unwrap()
 }
 struct Importer<'catalogs> {
-    entities: &'catalogs mut Catalog<Entity>,
-    meshes: &'catalogs mut Catalog<Mesh>,
-    materials: &'catalogs mut Catalog<Material>,
-    textures: &'catalogs mut Catalog<Texture>,
-    buffers: Vec<::gltf::buffer::Data>,
-    images: Vec<::gltf::image::Data>,
+    blob: Option<Vec<u8>>,
+    base_path: String,
+
+    entities_catalog: &'catalogs mut Catalog<Entity>,
+    meshes_catalog: &'catalogs mut Catalog<Mesh>,
+    materials_catalog: &'catalogs mut Catalog<Material>,
+    textures_catalog: &'catalogs mut Catalog<Texture>,
+
+    // relate gltf indices to data or catalog ids
+    buffers: Vec<Vec<u8>>,
+    images: Vec<(Vec<u8>, usize, usize)>,
+    textures: Vec<Id<Texture>>,
+    materials: Vec<Id<Material>>,
+    meshes: Vec<Id<Mesh>>,
 }
 
 impl<'catalogs> Importer<'catalogs> {
-    fn import(&mut self, document: ::gltf::Document) -> Vec<ImportGltfError> {
+    fn import(
+        &mut self,
+        document: gltf::Document,
+    ) -> Result<Vec<ImportGltfError>, ImportGltfError> {
         let mut errors = vec![];
+
+        for buffer in document.buffers() {
+            let b = self.import_gltf_buffer(buffer)?;
+            self.buffers.push(b);
+        }
+
+        for image in document.images() {
+            self.images.push(self.import_gltf_image(image)?);
+        }
+
+        for texture in document.textures() {
+            let t = self.import_gltf_texture(texture)?;
+            self.textures.push(t);
+        }
+
+        for material in document.materials() {
+            let m = self.import_gltf_material(material)?;
+            self.materials.push(m);
+        }
+
+        for mesh in document.meshes() {
+            let m = self.import_gltf_mesh(mesh)?;
+            self.meshes.push(m);
+        }
+
         let scene = document.default_scene().unwrap();
         for node in scene.nodes() {
             if let Err(e) = self.import_gltf_node(node, None) {
                 errors.push(e);
             }
         }
-        errors
+
+        Ok(errors)
+    }
+
+    fn import_gltf_buffer(&mut self, buffer: gltf::Buffer) -> Result<Vec<u8>, ImportGltfError> {
+        match buffer.source() {
+            gltf::buffer::Source::Bin => {
+                self.blob.take().ok_or(ImportGltfError::BinSectionNotFound)
+            }
+            gltf::buffer::Source::Uri(uri) => {
+                if uri.starts_with("data:") {
+                    Ok(data_uri_to_bytes(uri)?)
+                } else {
+                    Ok(std::fs::read(format!("{}/{}", self.base_path, uri))?)
+                }
+            }
+        }
+    }
+
+    // result is (rgba bytes, width, height)
+    fn import_gltf_image(
+        &self,
+        image: gltf::Image,
+    ) -> Result<(Vec<u8>, usize, usize), ImportGltfError> {
+        let (data, mime_type) = match image.source() {
+            gltf::image::Source::Uri { uri, mime_type } => {
+                let data = if uri.starts_with("data:") {
+                    data_uri_to_bytes(uri)?
+                } else {
+                    std::fs::read(&format!("{}/{}", self.base_path, uri))?
+                };
+                (Cow::from(data), mime_type)
+            }
+            gltf::image::Source::View { view, mime_type } => {
+                let buffer = &self.buffers[view.buffer().index()];
+                let data = &buffer[view.offset()..view.offset() + view.length()];
+                (Cow::from(data), Some(mime_type))
+            }
+        };
+
+        let format = match mime_type {
+            Some("image/jpeg") => Ok(ImageFormat::Jpeg),
+            Some("image/png") => Ok(ImageFormat::Png),
+            fmt => Err(ImportGltfError::UnknownImageFormat(fmt.map(str::to_string))),
+        }?;
+
+        let loaded = image::load_from_memory_with_format(&data, format)
+            .map_err(|e| ImportGltfError::ImageLoadingFailed(image.index().to_string(), e))?;
+        let (w, h) = (loaded.width() as usize, loaded.height() as usize);
+        Ok((loaded.into_rgba().as_bytes().to_owned(), w, h))
     }
 
     fn import_gltf_texture(
         &mut self,
         texture: gltf::Texture,
     ) -> Result<Id<Texture>, ImportGltfError> {
-        if let gltf::image::Source::Uri { uri, .. } = texture.source().source() {
-            let data = &self
-                .images
-                .get(texture.source().index())
-                .ok_or(ImportGltfError::ImageFileNotFound(uri.to_string()))?;
-            let loaded = image::load_from_memory(&data.pixels)
-                .map_err(|_| ImportGltfError::ImageLoadingFailed(uri.to_string()))?;
-            let width = data.width;
-            let height = data.height;
-            let rgba = loaded.into_rgba();
-            let bytes = rgba.as_bytes();
-            Ok(self
-                .textures
-                .add(Texture::from_rgba(&bytes, width as i32, height as i32)))
-        } else {
-            unimplemented!("Only relative uri image loading is implemented")
-        }
+        let (data, width, height) = &self.images[texture.source().index()];
+        // TODO! samplers etc
+        Ok(self
+            .textures_catalog
+            .add(Texture::from_rgba(&data, *width as i32, *height as i32)))
     }
 
     fn import_gltf_material(
@@ -73,7 +160,7 @@ impl<'catalogs> Importer<'catalogs> {
         material: gltf::Material,
     ) -> Result<Id<Material>, ImportGltfError> {
         let normal = match material.normal_texture().as_ref() {
-            Some(info) => Some(self.import_gltf_texture(info.texture())?),
+            Some(info) => self.textures.get(info.texture().index()).copied(),
             None => None,
         };
         let diffuse = match material
@@ -81,11 +168,11 @@ impl<'catalogs> Importer<'catalogs> {
             .base_color_texture()
             .as_ref()
         {
-            Some(info) => Some(self.import_gltf_texture(info.texture())?),
+            Some(info) => self.textures.get(info.texture().index()).copied(),
             None => None,
         };
         let base_diffuse_color = material.pbr_metallic_roughness().base_color_factor();
-        Ok(self.materials.add(Material {
+        Ok(self.materials_catalog.add(Material {
             normal,
             diffuse,
             base_diffuse_color,
@@ -95,8 +182,8 @@ impl<'catalogs> Importer<'catalogs> {
     fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Id<Mesh>, ImportGltfError> {
         let mut primitives = vec![];
         for primitive in mesh.primitives() {
-            let reader = primitive
-                .reader(|buffer| self.buffers.get(buffer.index()).map(|it| it.0.as_slice()));
+            let reader =
+                primitive.reader(|buffer| self.buffers.get(buffer.index()).map(Vec::as_slice));
 
             let positions = reader
                 .read_positions()
@@ -137,13 +224,16 @@ impl<'catalogs> Importer<'catalogs> {
                 .map(|it| it as u16) // TODO! this sucks
                 .collect::<Vec<_>>();
 
-            let material = self.import_gltf_material(primitive.material())?;
+            let material = match primitive.material().index() {
+                Some(i) => self.materials[i],
+                None => self.import_gltf_material(primitive.material())?, // i'm importing the default material, which doesn't make much sense
+            };
 
             primitives.push(Primitive::new(
                 &positions, &normals, &uvs, &indices, material,
             ));
         }
-        Ok(self.meshes.add(Mesh { primitives }))
+        Ok(self.meshes_catalog.add(Mesh { primitives }))
     }
 
     fn import_gltf_node(
@@ -152,7 +242,7 @@ impl<'catalogs> Importer<'catalogs> {
         parent: Option<Id<Entity>>,
     ) -> Result<Id<Entity>, ImportGltfError> {
         let mesh = match node.mesh() {
-            Some(mesh) => Some(self.import_gltf_mesh(mesh)?),
+            Some(mesh) => self.meshes.get(mesh.index()).copied(),
             None => None,
         };
         let entity = Entity {
@@ -161,14 +251,14 @@ impl<'catalogs> Importer<'catalogs> {
             mesh,
             transform: node.transform().matrix(),
         };
-        let id = self.entities.add(entity);
+        let id = self.entities_catalog.add(entity);
 
         let mut children = vec![];
         for child in node.children() {
             let child_id = self.import_gltf_node(child, Some(id))?;
             children.push(child_id);
         }
-        self.entities
+        self.entities_catalog
             .get_mut(id)
             .ok_or(ImportGltfError::Unreachable)?
             .children = children;
@@ -177,12 +267,22 @@ impl<'catalogs> Importer<'catalogs> {
     }
 }
 
+fn data_uri_to_bytes(uri: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    base64::decode(&uri[uri.find(",").unwrap_or(0) + 1..])
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum ImportGltfError {
-    #[error("image file '{0}' not found.")]
-    ImageFileNotFound(String),
-    #[error("image loading failed for file '{0}'")]
-    ImageLoadingFailed(String),
+    #[error("io error: {0}")]
+    IOError(#[from] std::io::Error),
+    #[error("base 64 decode error: {0}")]
+    Base64Error(#[from] base64::DecodeError),
+    #[error("image loading failed for file '{0}': {1}")]
+    ImageLoadingFailed(String, ImageError),
+    #[error("unknown image format: {0:?}")]
+    UnknownImageFormat(Option<String>),
+    #[error("binary section of gltf not found")]
+    BinSectionNotFound,
     #[error(
         "required property '{0}' is missing for mesh with index {1} and primitive with index {2}"
     )]

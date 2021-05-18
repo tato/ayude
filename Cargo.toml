@@ -17,6 +17,6 @@ glutin = "0"
 gl = "0"
 glam = "0"
 image = { version="0", default-features=false, features=["png", "jpeg"] }
-gltf = { version="0.16", features=["utils"] }
-
+gltf = { version="0.16", default-features=false, features=["utils"] }
+base64 = "0.13"
 msgbox = "0"

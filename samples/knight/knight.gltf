@@ -10009,7 +10009,14 @@
         {
             "doubleSided" : true,
             "name" : "knight",
-            "pbrMetallicRoughness" : {}
+            "pbrMetallicRoughness" : {
+                "baseColorTexture": {
+                    "index": 0,
+                    "texCoord": 0
+                },
+                "metallicFactor": 0,
+                "roughnessFactor": 0.5
+            }
         }
     ],
     "meshes" : [
@@ -10029,6 +10036,23 @@
                     "material" : 0
                 }
             ]
+        }
+    ],
+    "textures": [
+        {
+            "sampler": 0,
+            "source": 0
+        }
+    ],
+    "images": [
+        {
+            "uri": "knight.png",
+            "mimeType": "image/png"
+        }
+    ],
+    "samplers": [
+        {
+
         }
     ],
     "skins" : [
