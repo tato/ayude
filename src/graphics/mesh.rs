@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{graphics::Material};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mesh {
     pub vao: Rc<u32>,
     pub element_count: i32,

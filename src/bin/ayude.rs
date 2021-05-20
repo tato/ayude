@@ -49,7 +49,11 @@ impl World {
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
 
         let gltf_file_name = "samples/knight/knight.gltf";
+        // let gltf_file_name = "samples/principito_y_el_aviador/scene.gltf";
         let the_entity = import_gltf::import(gltf_file_name).unwrap();
+
+        dbg!(&the_entity.meshes);
+        dbg!(&the_entity.mesh_transforms);
 
         let the_sphere = import_gltf::import("samples/sphere.gltf").unwrap();
 
@@ -102,7 +106,7 @@ impl World {
                 &self.the_sphere
             } else {
                 &self.the_entity
-            };
+            }; 
             let base_transform = &entity.transform;
             for (mesh, mesh_transform) in entity.meshes.iter().zip(&entity.mesh_transforms) {
                 let material = &mesh.material;

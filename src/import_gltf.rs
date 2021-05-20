@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, iter::repeat};
 
 use glam::Mat4;
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
@@ -53,7 +53,6 @@ pub fn import(file_name: &str) -> Result<Entity, ImportGltfError> {
         blob: gltf.blob,
         buffers: vec![],
         images: vec![],
-        node_parents: vec![None; gltf.document.nodes().count()],
         textures: vec![None; gltf.document.textures().count()],
         materials: vec![None; gltf.document.materials().count()],
         meshes: vec![None; gltf.document.meshes().count()],
@@ -68,8 +67,6 @@ struct Importer {
 
     buffers: Vec<Vec<u8>>,
     images: Vec<(Vec<u8>, u32, u32, TextureFormat)>,
-
-    node_parents: Vec<Option<usize>>,
 
     textures: Vec<Option<Texture>>,
     materials: Vec<Option<Material>>,
@@ -92,23 +89,16 @@ impl Importer {
         for image in document.images() {
             self.images.push(self.import_gltf_image(image)?);
         }
-
-        // store the parent of each node so we can traverse the tree backwards
-        for node in scene.nodes() {
-            for child in node.children() {
-                self.node_parents[child.index()] = Some(node.index());
-            }
-        }
-
-        let (meshes, mesh_transforms) = self.collect_scene_meshes(&document, scene)?;
-
-        let skin = None;
         let transform = Transform::new([
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ]);
+
+        let (meshes, mesh_transforms) = self.collect_scene_meshes(scene, &transform)?;
+
+        let skin = None;
 
         Ok(Entity {
             meshes,
@@ -120,39 +110,33 @@ impl Importer {
 
     fn collect_scene_meshes(
         &mut self,
-        document: &gltf::Document,
         scene: gltf::Scene,
+        base_transform: &Transform,
     ) -> Result<(Vec<Mesh>, Vec<Transform>), ImportGltfError> {
         let mut meshes = vec![];
         let mut transforms = vec![];
 
-        for node in scene.nodes() {
+        let mut node_stack: Vec<(gltf::Node, Transform)> =
+            scene.nodes().zip(repeat(base_transform).cloned()).collect();
+
+        loop {
+            let (node, parent_transform) = match node_stack.pop() {
+                Some(n) => n,
+                None => break,
+            };
+
+            let transform = {
+                let parent_transform = Mat4::from_cols_array_2d(parent_transform.mat4());
+                let node_transform = Mat4::from_cols_array_2d(&node.transform().matrix());
+                Transform::new((node_transform * parent_transform).to_cols_array_2d())
+            };
+
+            node_stack.extend(node.children().zip(repeat(&transform).cloned()));
+
             if let Some(mesh) = node.mesh() {
-                // calculate transform by multiplying all parents or whatever
-                let transform = {
-                    let mut result = Mat4::identity();
-                    let mut current = node;
-                    loop {
-                        result = result * Mat4::from_cols_array_2d(&current.transform().matrix());
-                        if let Some(parent) = self.node_parents[current.index()] {
-                            current = match document.nodes().nth(parent) {
-                                Some(n) => n,
-                                None => break,
-                            };
-                        } else {
-                            break;
-                        }
-                    }
-                    result
-                };
+                let import = self.import_gltf_mesh(mesh)?;
 
-                let import = self.import_gltf_mesh(mesh)?;                
-                
-                let transform = Transform::new(transform.to_cols_array_2d());
-                for _ in 0..import.len() {
-                    transforms.push(transform.clone());
-                }
-
+                transforms.extend(repeat(transform).take(import.len()));
                 meshes.extend(import);
             }
         }

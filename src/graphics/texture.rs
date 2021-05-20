@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Texture {
     pub id: Rc<u32>,
 }

@@ -15,9 +15,15 @@ pub struct Entity {
     pub skin: Option<Skin>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Skin {
-    pub joints: Vec<Transform>,
+    pub joints: Vec<Joint>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Joint {
+    pub transform: Transform,
+    pub children: [usize; 4],
 }
 
 #[derive(Clone, Debug)]

@@ -7,7 +7,7 @@ pub use texture::Texture;
 mod shader;
 pub use shader::{Shader, ShaderError};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Material {
     pub normal: Option<Texture>,
     pub diffuse: Option<Texture>,
