@@ -1,21 +1,21 @@
-use crate::{catalog::Id, graphics::Material};
+use std::rc::Rc;
 
-pub struct Primitive {
-    pub vao: u32,
-    pub element_count: i32,
-    pub material: Id<Material>,
-}
+use crate::{graphics::Material};
+
+#[derive(Clone)]
 pub struct Mesh {
-    pub primitives: Vec<Primitive>,
+    pub vao: Rc<u32>,
+    pub element_count: i32,
+    pub material: Material,
 }
 
-impl Primitive {
+impl Mesh {
     pub fn new(
         positions: &[[f32; 3]],
         normals: &[[f32; 3]],
         uvs: &[[f32; 2]],
         indices: &[u16],
-        material: Id<Material>,
+        material: &Material,
     ) -> Self {
         assert!(positions.len() == normals.len() && positions.len() == uvs.len(),
             "There are different amounts of components for this Geometry\npositions[{}], normals[{}], uvs[{}]",
@@ -77,39 +77,42 @@ impl Primitive {
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 
             Self {
-                vao,
+                vao: Rc::new(vao),
                 element_count: indices.len() as i32,
-                material,
+                material: material.clone(),
             }
         }
     }
 }
 
-impl Drop for Primitive {
+impl Drop for Mesh {
     fn drop(&mut self) {
-        unsafe {
-            gl::BindVertexArray(self.vao);
+        if 1 == Rc::strong_count(&self.vao) {
+            let vao: &u32 = &self.vao;
+            unsafe {
+                gl::BindVertexArray(*vao);
 
-            let mut buffer_ids: [i32; 4] = [0; 4];
-            gl::GetVertexAttribiv(
-                0,
-                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
-                &mut buffer_ids[0],
-            );
-            gl::GetVertexAttribiv(
-                1,
-                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
-                &mut buffer_ids[1],
-            );
-            gl::GetVertexAttribiv(
-                2,
-                gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
-                &mut buffer_ids[2],
-            );
-            gl::GetIntegerv(gl::ELEMENT_ARRAY_BUFFER_BINDING, &mut buffer_ids[3]);
-            gl::DeleteBuffers(4, std::mem::transmute(&buffer_ids as *const i32));
+                let mut buffer_ids: [i32; 4] = [0; 4];
+                gl::GetVertexAttribiv(
+                    0,
+                    gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                    &mut buffer_ids[0],
+                );
+                gl::GetVertexAttribiv(
+                    1,
+                    gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                    &mut buffer_ids[1],
+                );
+                gl::GetVertexAttribiv(
+                    2,
+                    gl::VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,
+                    &mut buffer_ids[2],
+                );
+                gl::GetIntegerv(gl::ELEMENT_ARRAY_BUFFER_BINDING, &mut buffer_ids[3]);
+                gl::DeleteBuffers(4, std::mem::transmute(&buffer_ids as *const i32));
 
-            gl::BindVertexArray(0);
+                gl::BindVertexArray(0);
+            }
         }
     }
 }

@@ -1,8 +1,8 @@
-use std::rc;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Texture {
-    pub id: rc::Rc<u32>,
+    pub id: Rc<u32>,
 }
 
 impl Texture {
@@ -25,7 +25,7 @@ impl Texture {
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        if 1 == rc::Rc::strong_count(&self.id) {
+        if 1 == Rc::strong_count(&self.id) {
             unsafe {
                 gl::DeleteTextures(1, self.id.as_ref());
             }

@@ -1,9 +1,8 @@
 use ayude::{
-    catalog,
-    graphics::{self, Primitive},
-    import_gltf, Catalog, Entity, Skin,
+    graphics::{self},
+    import_gltf, Entity,
 };
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 use glutin::{
     dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -11,7 +10,6 @@ use glutin::{
     window::WindowBuilder,
     Api, ContextBuilder, GlProfile, GlRequest, Robustness,
 };
-use graphics::Mesh;
 use std::{
     f32::consts::PI,
     time::{Duration, Instant},
@@ -38,12 +36,7 @@ pub struct World {
 
     shader: graphics::Shader,
 
-    meshes: Catalog<Mesh>,
-    materials: Catalog<graphics::Material>,
-    textures: Catalog<graphics::Texture>,
-    entities: Catalog<Entity>,
-    skins: Catalog<Skin>,
-
+    the_entity: Entity,
     // cube_mesh: catalog::Id<Mesh>,
 }
 
@@ -53,13 +46,10 @@ impl World {
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
 
-        let mut meshes = Catalog::new();
+        let gltf_file_name = "samples/knight/knight.gltf";
+        let the_entity = import_gltf::import(gltf_file_name).unwrap();
 
-        // let cube_mesh = meshes.add(Mesh {
-        //     primitives: vec![ get_cube_primitive() ],
-        // });
-
-        let mut world = World {
+        let world = World {
             camera_position: [0.0, 0.0, 37.0].into(),
             camera_yaw: std::f32::consts::PI,
             camera_pitch: 0.0,
@@ -68,25 +58,8 @@ impl World {
 
             shader,
 
-            meshes,
-            materials: Catalog::new(),
-            textures: Catalog::new(),
-            entities: Catalog::new(),
-            skins: Catalog::new(),
-
-            // cube_mesh,
+            the_entity,
         };
-
-        let gltf_file_name = "samples/knight/knight.gltf";
-        import_gltf::import(
-            gltf_file_name,
-            &mut world.entities,
-            &mut world.meshes,
-            &mut world.materials,
-            &mut world.textures,
-            &mut world.skins,
-        )
-        .unwrap();
 
         world
     }
@@ -117,36 +90,39 @@ impl World {
             UP_VECTOR.into(),
         );
 
-        for entity in self.entities.iter() {
-            let model = entity.transform;
-            if let Some(mesh) = self.meshes.get_opt(entity.mesh) {
-                for primitive in &mesh.primitives {
-                    let material = self.materials.get(primitive.material).expect("XD");
-                    let diffuse = self.textures.get_opt(material.diffuse);
-                    let normal = self.textures.get_opt(material.normal);
+        {
+            let entity = &self.the_entity;
+            let base_transform = &entity.transform;
+            for (mesh, mesh_transform) in entity.meshes.iter().zip(&entity.mesh_transforms) {
+                let material = &mesh.material;
+                let diffuse = material.diffuse.as_ref();
+                let normal = material.normal.as_ref();
 
-                    self.shader
-                        .uniform("perspective", perspective.to_cols_array_2d());
-                    self.shader.uniform("view", view.to_cols_array_2d());
-                    self.shader.uniform("model", model);
-                    self.shader.uniform(
-                        "diffuse_texture",
-                        diffuse.cloned().unwrap_or(graphics::Texture::empty()),
-                    );
-                    self.shader.uniform(
-                        "normal_texture",
-                        normal.cloned().unwrap_or(graphics::Texture::empty()),
-                    );
-                    self.shader
-                        .uniform("has_diffuse_texture", diffuse.is_some());
-                    self.shader.uniform("has_normal_texture", normal.is_some());
-                    self.shader
-                        .uniform("base_diffuse_color", material.base_diffuse_color);
-                    self.shader
-                        .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+                let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
+                let mesh_transform = Mat4::from_cols_array_2d(mesh_transform.mat4());
+                let model = (mesh_transform * base_transform).to_cols_array_2d();
 
-                    frame.render(primitive, &self.shader);
-                }
+                self.shader
+                    .uniform("perspective", perspective.to_cols_array_2d());
+                self.shader.uniform("view", view.to_cols_array_2d());
+                self.shader.uniform("model", model);
+                self.shader.uniform(
+                    "diffuse_texture",
+                    diffuse.cloned().unwrap_or(graphics::Texture::empty()),
+                );
+                self.shader.uniform(
+                    "normal_texture",
+                    normal.cloned().unwrap_or(graphics::Texture::empty()),
+                );
+                self.shader
+                    .uniform("has_diffuse_texture", diffuse.is_some());
+                self.shader.uniform("has_normal_texture", normal.is_some());
+                self.shader
+                    .uniform("base_diffuse_color", material.base_diffuse_color);
+                self.shader
+                    .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+
+                frame.render(mesh, &self.shader);
             }
         }
     }

@@ -1,14 +1,14 @@
 use std::borrow::Cow;
 
+use glam::Mat4;
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 
 use crate::{
-    catalog::Id,
     graphics::{
         texture::{MagFilter, MinFilter, TextureFormat, TextureWrap},
-        Material, Mesh, Primitive, Texture,
+        Material, Mesh, Texture,
     },
-    Catalog, Entity, Skin,
+    Entity, Transform,
 };
 
 // notes:
@@ -46,57 +46,44 @@ use crate::{
 // have the possibility of deduping textures and so on, but for now the conclusion is
 // IMPORT SCENES FROM EACH GLTF FILE AND DON'T HAVE A GLOBAL MESH, TEXTURE, ETC THING
 
-pub fn import(
-    file_name: &str,
-    entities: &mut Catalog<Entity>,
-    meshes: &mut Catalog<Mesh>,
-    materials: &mut Catalog<Material>,
-    textures: &mut Catalog<Texture>,
-    skins: &mut Catalog<Skin>,
-) -> Result<(), ImportGltfError> {
-    let gltf = gltf::Gltf::open(file_name).unwrap();
+pub fn import(file_name: &str) -> Result<Entity, ImportGltfError> {
+    let gltf = gltf::Gltf::open(file_name)?;
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
-        entities_catalog: entities,
-        meshes_catalog: meshes,
-        materials_catalog: materials,
-        textures_catalog: textures,
-        skins_catalog: skins,
         blob: gltf.blob,
         buffers: vec![],
         images: vec![],
-        textures: vec![],
-        materials: vec![],
-        meshes: vec![],
-        skins: vec![],
-        nodes: vec![],
+        node_parents: vec![None; gltf.document.nodes().count()],
+        textures: vec![None; gltf.document.textures().count()],
+        materials: vec![None; gltf.document.materials().count()],
+        meshes: vec![None; gltf.document.meshes().count()],
         base_path,
     };
 
     importer.import(gltf.document)
 }
-struct Importer<'catalogs> {
-    blob: Option<Vec<u8>>,
+struct Importer {
     base_path: String,
+    blob: Option<Vec<u8>>,
 
-    entities_catalog: &'catalogs mut Catalog<Entity>,
-    meshes_catalog: &'catalogs mut Catalog<Mesh>,
-    materials_catalog: &'catalogs mut Catalog<Material>,
-    textures_catalog: &'catalogs mut Catalog<Texture>,
-    skins_catalog: &'catalogs mut Catalog<Skin>,
-
-    // relate gltf indices to data or catalog ids
     buffers: Vec<Vec<u8>>,
     images: Vec<(Vec<u8>, u32, u32, TextureFormat)>,
-    textures: Vec<Id<Texture>>,
-    materials: Vec<Id<Material>>,
-    meshes: Vec<Id<Mesh>>,
-    skins: Vec<Id<Skin>>,
-    nodes: Vec<Id<Entity>>,
+
+    node_parents: Vec<Option<usize>>,
+
+    textures: Vec<Option<Texture>>,
+    materials: Vec<Option<Material>>,
+    meshes: Vec<Option<Vec<Mesh>>>,
 }
 
-impl<'catalogs> Importer<'catalogs> {
-    fn import(&mut self, document: gltf::Document) -> Result<(), ImportGltfError> {
+impl Importer {
+    fn import(&mut self, document: gltf::Document) -> Result<Entity, ImportGltfError> {
+        // check if document has default scene
+        let scene = document
+            .default_scene()
+            .expect("gltf document should have default scene");
+
+        // pre-import buffers and images
         for buffer in document.buffers() {
             let b = self.import_gltf_buffer(buffer)?;
             self.buffers.push(b);
@@ -106,36 +93,71 @@ impl<'catalogs> Importer<'catalogs> {
             self.images.push(self.import_gltf_image(image)?);
         }
 
-        for texture in document.textures() {
-            let t = self.import_gltf_texture(texture)?;
-            self.textures.push(t);
+        // store the parent of each node so we can traverse the tree backwards
+        for node in scene.nodes() {
+            for child in node.children() {
+                self.node_parents[child.index()] = Some(node.index());
+            }
         }
 
-        for material in document.materials() {
-            let m = self.import_gltf_material(material)?;
-            self.materials.push(m);
+        let (meshes, mesh_transforms) = self.collect_scene_meshes(&document, scene)?;
+
+        let skin = None;
+        let transform = Transform::new([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+
+        Ok(Entity {
+            meshes,
+            mesh_transforms,
+            skin,
+            transform,
+        })
+    }
+
+    fn collect_scene_meshes(
+        &mut self,
+        document: &gltf::Document,
+        scene: gltf::Scene,
+    ) -> Result<(Vec<Mesh>, Vec<Transform>), ImportGltfError> {
+        let mut meshes = vec![];
+        let mut transforms = vec![];
+
+        for node in scene.nodes() {
+            if let Some(mesh) = node.mesh() {
+                // calculate transform by multiplying all parents or whatever
+                let transform = {
+                    let mut result = Mat4::identity();
+                    let mut current = node;
+                    loop {
+                        result = result * Mat4::from_cols_array_2d(&current.transform().matrix());
+                        if let Some(parent) = self.node_parents[current.index()] {
+                            current = match document.nodes().nth(parent) {
+                                Some(n) => n,
+                                None => break,
+                            };
+                        } else {
+                            break;
+                        }
+                    }
+                    result
+                };
+
+                let import = self.import_gltf_mesh(mesh)?;                
+                
+                let transform = Transform::new(transform.to_cols_array_2d());
+                for _ in 0..import.len() {
+                    transforms.push(transform.clone());
+                }
+
+                meshes.extend(import);
+            }
         }
 
-        for mesh in document.meshes() {
-            let m = self.import_gltf_mesh(mesh)?;
-            self.meshes.push(m);
-        }
-
-        for node in document.nodes() {
-            let n = self.import_gltf_partial_node(node)?;
-            self.nodes.push(n);
-        }
-
-        for skin in document.skins() {
-            let s = self.import_gltf_skin(skin)?;
-            self.skins.push(s);
-        }
-
-        for node in document.nodes() {
-            self.complete_gltf_node_import(node);
-        }
-
-        Ok(())
+        Ok((meshes, transforms))
     }
 
     fn import_gltf_buffer(&mut self, buffer: gltf::Buffer) -> Result<Vec<u8>, ImportGltfError> {
@@ -236,10 +258,16 @@ impl<'catalogs> Importer<'catalogs> {
         }
     }
 
-    fn import_gltf_texture(
-        &mut self,
-        texture: gltf::Texture,
-    ) -> Result<Id<Texture>, ImportGltfError> {
+    fn import_gltf_texture(&mut self, texture: gltf::Texture) -> Result<Texture, ImportGltfError> {
+        let texture_index = texture.index();
+        if let Some(tex) = self
+            .textures
+            .get(texture_index)
+            .ok_or(ImportGltfError::UnknownTextureIndex(texture_index))?
+        {
+            return Ok(tex.clone());
+        }
+
         let image_index = texture.source().index();
         let (data, width, height, format) = &self
             .images
@@ -279,16 +307,25 @@ impl<'catalogs> Importer<'catalogs> {
         }
 
         let texture = builder.build();
-
-        Ok(self.textures_catalog.add(texture))
+        Ok(texture)
     }
 
     fn import_gltf_material(
         &mut self,
         material: gltf::Material,
-    ) -> Result<Id<Material>, ImportGltfError> {
+    ) -> Result<Material, ImportGltfError> {
+        if let Some(index) = material.index() {
+            if let Some(mat) = self
+                .materials
+                .get(index)
+                .ok_or(ImportGltfError::UnknownMaterialIndex(index))?
+            {
+                return Ok(mat.clone());
+            }
+        }
+
         let normal = match material.normal_texture().as_ref() {
-            Some(info) => self.textures.get(info.texture().index()).copied(),
+            Some(info) => Some(self.import_gltf_texture(info.texture())?),
             None => None,
         };
         let diffuse = match material
@@ -296,18 +333,27 @@ impl<'catalogs> Importer<'catalogs> {
             .base_color_texture()
             .as_ref()
         {
-            Some(info) => self.textures.get(info.texture().index()).copied(),
+            Some(info) => Some(self.import_gltf_texture(info.texture())?),
             None => None,
         };
         let base_diffuse_color = material.pbr_metallic_roughness().base_color_factor();
-        Ok(self.materials_catalog.add(Material {
+        Ok(Material {
             normal,
             diffuse,
             base_diffuse_color,
-        }))
+        })
     }
 
-    fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Id<Mesh>, ImportGltfError> {
+    fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Vec<Mesh>, ImportGltfError> {
+        let mesh_index = mesh.index();
+        if let Some(m) = self
+            .meshes
+            .get(mesh_index)
+            .ok_or(ImportGltfError::UnknownMeshIndex(mesh_index))?
+        {
+            return Ok(m.clone());
+        }
+
         let mut primitives = vec![];
         for primitive in mesh.primitives() {
             let reader =
@@ -352,74 +398,72 @@ impl<'catalogs> Importer<'catalogs> {
                 .map(|it| it as u16) // TODO! this sucks
                 .collect::<Vec<_>>();
 
-            let material = match primitive.material().index() {
-                Some(i) => self
-                    .materials
-                    .get(i)
-                    .copied()
-                    .ok_or(ImportGltfError::UnknownMaterialIndex(i))?,
-                None => self.import_gltf_material(primitive.material())?, // i'm importing the default material, which doesn't make much sense
-            };
+            let material = self.import_gltf_material(primitive.material())?;
 
-            primitives.push(Primitive::new(
-                &positions, &normals, &uvs, &indices, material,
-            ));
+            primitives.push(Mesh::new(&positions, &normals, &uvs, &indices, &material));
         }
-        Ok(self.meshes_catalog.add(Mesh { primitives }))
+
+        Ok(primitives)
     }
 
-    fn import_gltf_skin(&mut self, skin: gltf::Skin) -> Result<Id<Skin>, ImportGltfError> {
-        let mut joints = vec![];
-        for join in skin.joints() {
-            let joint_index = join.index();
-            joints.push(
-                self.nodes
-                    .get(joint_index)
-                    .copied()
-                    .ok_or(ImportGltfError::UnknownNodeIndex(joint_index))?,
-            );
-        }
-        Ok(self.skins_catalog.add(Skin { joints }))
-    }
+    // fn import_gltf_skin(&mut self, skin: gltf::Skin) -> Result<Skin, ImportGltfError> {
+    //     let skin_index = skin.index();
+    //     if let Some(sk) = self.skins.get(skin_index).ok_or(ImportGltfError::UnknownSkinIndex(skin_index))? {
+    //         return Ok(sk.clone());
+    //     }
 
-    fn import_gltf_partial_node(
-        &mut self,
-        node: gltf::Node,
-    ) -> Result<Id<Entity>, ImportGltfError> {
-        let mesh = match node.mesh() {
-            Some(mesh) => self.meshes.get(mesh.index()).copied(),
-            None => None,
-        };
-        let entity = Entity {
-            children: vec![],
-            parent: None,
-            skin: None,
-            mesh,
-            transform: node.transform().matrix(),
-        };
-        Ok(self.entities_catalog.add(entity))
-    }
+    //     let mut joints = vec![];
+    //     for joint in skin.joints() {
+    //         let joint_index = join.index();
+    //         joints.push(
+    //             self.nodes
+    //                 .get(joint_index)
+    //                 .copied()
+    //                 .ok_or(ImportGltfError::UnknownNodeIndex(joint_index))?,
+    //         );
+    //     }
 
-    // todo! prevent possible panics
-    fn complete_gltf_node_import(&mut self, node: gltf::Node) {
-        for child in node.children() {
-            self.entities_catalog
-                .get_mut(self.nodes[node.index()])
-                .unwrap()
-                .children
-                .push(self.nodes[child.index()]);
-            self.entities_catalog
-                .get_mut(self.nodes[child.index()])
-                .unwrap()
-                .parent = Some(self.nodes[node.index()]);
-        }
-        if let Some(skin) = node.skin() {
-            self.entities_catalog
-                .get_mut(self.nodes[node.index()])
-                .unwrap()
-                .skin = Some(self.skins[skin.index()]);
-        }
-    }
+    //     Ok(Skin { joints })
+    // }
+
+    // fn import_gltf_partial_node(
+    //     &mut self,
+    //     node: gltf::Node,
+    // ) -> Result<Id<Entity>, ImportGltfError> {
+    //     let mesh = match node.mesh() {
+    //         Some(mesh) => self.meshes.get(mesh.index()).copied(),
+    //         None => None,
+    //     };
+    //     let entity = Entity {
+    //         children: vec![],
+    //         parent: None,
+    //         skin: None,
+    //         mesh,
+    //         transform: node.transform().matrix(),
+    //     };
+    //     Ok(self.entities_catalog.add(entity))
+    // }
+
+    // // todo! prevent possible panics
+    // fn complete_gltf_node_import(&mut self, node: gltf::Node) {
+    //     for child in node.children() {
+    //         self.entities_catalog
+    //             .get_mut(self.nodes[node.index()])
+    //             .unwrap()
+    //             .children
+    //             .push(self.nodes[child.index()]);
+    //         self.entities_catalog
+    //             .get_mut(self.nodes[child.index()])
+    //             .unwrap()
+    //             .parent = Some(self.nodes[node.index()]);
+    //     }
+    //     if let Some(skin) = node.skin() {
+    //         self.entities_catalog
+    //             .get_mut(self.nodes[node.index()])
+    //             .unwrap()
+    //             .skin = Some(self.skins[skin.index()]);
+    //     }
+    // }
 }
 
 fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::DecodeError> {
@@ -434,6 +478,8 @@ pub enum ImportGltfError {
     IOError(#[from] std::io::Error),
     #[error("base 64 decode error: {0}")]
     Base64Error(#[from] base64::DecodeError),
+    #[error("error while loading source gltf: {0}")]
+    GltfError(#[from] gltf::Error),
     #[error("image loading failed for file '{0}': {1}")]
     ImageLoadingFailed(String, ImageError),
     #[error("unknown image format '{0:?}' for image {1}")]
@@ -454,6 +500,12 @@ pub enum ImportGltfError {
     UnknownMaterialIndex(usize),
     #[error("unknown node index {0}")]
     UnknownNodeIndex(usize),
+    #[error("unknown mesh index {0}")]
+    UnknownMeshIndex(usize),
+    #[error("unknown texture index {0}")]
+    UnknownTextureIndex(usize),
+    #[error("unkown skin index {0}")]
+    UnknownSkinIndex(usize),
     #[error("unreachable")]
     Unreachable,
 }

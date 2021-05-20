@@ -5,18 +5,29 @@ pub mod graphics;
 
 pub mod catalog;
 pub use catalog::Catalog;
-use catalog::Id;
 
 pub mod import_gltf;
 
 pub struct Entity {
-    pub children: Vec<Id<Entity>>,
-    pub parent: Option<Id<Entity>>,
-    pub mesh: Option<Id<graphics::Mesh>>,
-    pub transform: [[f32; 4]; 4],
-    pub skin: Option<Id<Skin>>,
+    pub meshes: Vec<graphics::Mesh>,
+    pub mesh_transforms: Vec<Transform>,
+    pub transform: Transform,
+    pub skin: Option<Skin>,
 }
 
+#[derive(Clone)]
 pub struct Skin {
-    pub joints: Vec<Id<Entity>>,
+    pub joints: Vec<Transform>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Transform([[f32; 4]; 4]);
+
+impl Transform {
+    pub fn new(mat: [[f32; 4]; 4]) -> Transform {
+        Transform(mat)
+    }
+    pub fn mat4(&self) -> &[[f32; 4]; 4] {
+        &self.0
+    }
 }
