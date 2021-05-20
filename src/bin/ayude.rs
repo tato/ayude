@@ -37,7 +37,9 @@ pub struct World {
     shader: graphics::Shader,
 
     the_entity: Entity,
-    // cube_mesh: catalog::Id<Mesh>,
+    the_sphere: Entity,
+
+    rendering_sphere: bool,
 }
 
 impl World {
@@ -49,6 +51,8 @@ impl World {
         let gltf_file_name = "samples/knight/knight.gltf";
         let the_entity = import_gltf::import(gltf_file_name).unwrap();
 
+        let the_sphere = import_gltf::import("samples/sphere.gltf").unwrap();
+
         let world = World {
             camera_position: [0.0, 0.0, 37.0].into(),
             camera_yaw: std::f32::consts::PI,
@@ -59,6 +63,9 @@ impl World {
             shader,
 
             the_entity,
+            the_sphere,
+
+            rendering_sphere: false,
         };
 
         world
@@ -91,7 +98,11 @@ impl World {
         );
 
         {
-            let entity = &self.the_entity;
+            let entity = if self.rendering_sphere {
+                &self.the_sphere
+            } else {
+                &self.the_entity
+            };
             let base_transform = &entity.transform;
             for (mesh, mesh_transform) in entity.meshes.iter().zip(&entity.mesh_transforms) {
                 let material = &mesh.material;
@@ -231,6 +242,9 @@ fn main() {
                         } else if input.state == ElementState::Released {
                             game.movement[0] = 0.0f32.min(game.movement[0]);
                         }
+                    }
+                    Some(VirtualKeyCode::Tab) if input.state == ElementState::Pressed => {
+                        game.rendering_sphere = !game.rendering_sphere;
                     }
                     _ => return,
                 },
