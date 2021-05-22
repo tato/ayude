@@ -1,7 +1,4 @@
-use ayude::{
-    graphics::{self},
-    import_gltf, Entity,
-};
+use ayude::{Scene, Transform, graphics::{self}, import_gltf};
 use glam::{Mat4, Vec3};
 use glutin::{
     dpi::LogicalSize,
@@ -36,10 +33,10 @@ pub struct World {
 
     shader: graphics::Shader,
 
-    the_entity: Entity,
-    the_sphere: Entity,
+    the_scene: Scene,
+    the_sphere: Scene,
 
-    rendering_sphere: bool,
+    rendering_skin: bool,
 }
 
 impl World {
@@ -50,12 +47,9 @@ impl World {
 
         let gltf_file_name = "samples/knight/knight.gltf";
         // let gltf_file_name = "samples/principito_y_el_aviador/scene.gltf";
-        let the_entity = import_gltf::import(gltf_file_name).unwrap();
+        let the_entity = import_gltf::import_default(gltf_file_name).unwrap();
 
-        dbg!(&the_entity.meshes);
-        dbg!(&the_entity.mesh_transforms);
-
-        let the_sphere = import_gltf::import("samples/sphere.gltf").unwrap();
+        let the_sphere = import_gltf::import_default("samples/sphere.gltf").unwrap();
 
         let world = World {
             camera_position: [0.0, 0.0, 37.0].into(),
@@ -66,10 +60,10 @@ impl World {
 
             shader,
 
-            the_entity,
+            the_scene: the_entity,
             the_sphere,
 
-            rendering_sphere: false,
+            rendering_skin: false,
         };
 
         world
@@ -102,43 +96,65 @@ impl World {
         );
 
         {
-            let entity = if self.rendering_sphere {
-                &self.the_sphere
+            if !self.rendering_skin {
+                let scene = &self.the_scene;
+                let base_transform = &scene.transform;
+                for node in &scene.nodes {
+                    if node.meshes.is_empty() {
+                        continue;
+                    }
+
+                    let transform = {
+                        let mut current = node;
+                        let mut transform = Mat4::from_cols_array_2d(node.transform.mat4());
+                        'transform: loop {
+                            current = match current.parent {
+                                Some(index) => &scene.nodes[usize::from(index)],
+                                None => break 'transform,
+                            };
+                            
+                            transform = transform * Mat4::from_cols_array_2d(current.transform.mat4());
+                        }
+                        Transform::new(transform.to_cols_array_2d())
+                    };
+
+                    for mesh in &node.meshes {
+                        let material = &mesh.material;
+                        let diffuse = material.diffuse.as_ref();
+                        let normal = material.normal.as_ref();
+    
+                        let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
+                        let mesh_transform = Mat4::from_cols_array_2d(transform.mat4());
+                        let model = (mesh_transform * base_transform).to_cols_array_2d();
+    
+                        self.shader
+                            .uniform("perspective", perspective.to_cols_array_2d());
+                        self.shader.uniform("view", view.to_cols_array_2d());
+                        self.shader.uniform("model", model);
+                        self.shader.uniform(
+                            "diffuse_texture",
+                            diffuse.cloned().unwrap_or(graphics::Texture::empty()),
+                        );
+                        self.shader.uniform(
+                            "normal_texture",
+                            normal.cloned().unwrap_or(graphics::Texture::empty()),
+                        );
+                        self.shader
+                            .uniform("has_diffuse_texture", diffuse.is_some());
+                        self.shader.uniform("has_normal_texture", normal.is_some());
+                        self.shader
+                            .uniform("base_diffuse_color", material.base_diffuse_color);
+                        self.shader
+                            .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+    
+                        frame.render(mesh, &self.shader);
+                    }
+                }
+
             } else {
-                &self.the_entity
-            }; 
-            let base_transform = &entity.transform;
-            for (mesh, mesh_transform) in entity.meshes.iter().zip(&entity.mesh_transforms) {
-                let material = &mesh.material;
-                let diffuse = material.diffuse.as_ref();
-                let normal = material.normal.as_ref();
-
-                let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
-                let mesh_transform = Mat4::from_cols_array_2d(mesh_transform.mat4());
-                let model = (mesh_transform * base_transform).to_cols_array_2d();
-
-                self.shader
-                    .uniform("perspective", perspective.to_cols_array_2d());
-                self.shader.uniform("view", view.to_cols_array_2d());
-                self.shader.uniform("model", model);
-                self.shader.uniform(
-                    "diffuse_texture",
-                    diffuse.cloned().unwrap_or(graphics::Texture::empty()),
-                );
-                self.shader.uniform(
-                    "normal_texture",
-                    normal.cloned().unwrap_or(graphics::Texture::empty()),
-                );
-                self.shader
-                    .uniform("has_diffuse_texture", diffuse.is_some());
-                self.shader.uniform("has_normal_texture", normal.is_some());
-                self.shader
-                    .uniform("base_diffuse_color", material.base_diffuse_color);
-                self.shader
-                    .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
-
-                frame.render(mesh, &self.shader);
-            }
+                
+                // let joint_stack = vec![];
+            };
         }
     }
 }
@@ -248,7 +264,7 @@ fn main() {
                         }
                     }
                     Some(VirtualKeyCode::Tab) if input.state == ElementState::Pressed => {
-                        game.rendering_sphere = !game.rendering_sphere;
+                        game.rendering_skin = !game.rendering_skin;
                     }
                     _ => return,
                 },

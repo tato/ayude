@@ -1,14 +1,15 @@
-use std::{borrow::Cow, iter::repeat};
+use std::{borrow::Cow, convert::TryInto, iter::repeat};
 
-use glam::Mat4;
+
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
+use smallvec::SmallVec;
 
 use crate::{
     graphics::{
         texture::{MagFilter, MinFilter, TextureFormat, TextureWrap},
         Material, Mesh, Texture,
     },
-    Entity, Transform,
+    Node, Scene, Skin, Transform,
 };
 
 // notes:
@@ -46,7 +47,7 @@ use crate::{
 // have the possibility of deduping textures and so on, but for now the conclusion is
 // IMPORT SCENES FROM EACH GLTF FILE AND DON'T HAVE A GLOBAL MESH, TEXTURE, ETC THING
 
-pub fn import(file_name: &str) -> Result<Entity, ImportGltfError> {
+pub fn import_default(file_name: &str) -> Result<Scene, ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name)?;
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
@@ -59,7 +60,7 @@ pub fn import(file_name: &str) -> Result<Entity, ImportGltfError> {
         base_path,
     };
 
-    importer.import(gltf.document)
+    importer.import_default(gltf.document)
 }
 struct Importer {
     base_path: String,
@@ -74,7 +75,7 @@ struct Importer {
 }
 
 impl Importer {
-    fn import(&mut self, document: gltf::Document) -> Result<Entity, ImportGltfError> {
+    fn import_default(&mut self, document: gltf::Document) -> Result<Scene, ImportGltfError> {
         // check if document has default scene
         let scene = document
             .default_scene()
@@ -89,6 +90,66 @@ impl Importer {
         for image in document.images() {
             self.images.push(self.import_gltf_image(image)?);
         }
+
+        let mut nodes = vec![];
+
+        let root_nodes = scene
+            .nodes()
+            .map(|it| map_node_to_u16_index(&it))
+            .collect::<Result<SmallVec<[u16; 4]>, ImportGltfError>>()?;
+
+        let mut node_stack: Vec<(gltf::Node, Option<u16>)> =
+            scene.nodes().zip(repeat(None)).collect();
+
+        loop {
+            let (node, parent) = match node_stack.pop() {
+                Some(it) => it,
+                None => break,
+            };
+
+            let node_index = map_node_to_u16_index(&node)?;
+
+            node_stack.extend(node.children().zip(repeat(Some(node_index))));
+
+            let children = node
+                .children()
+                .map(|it| map_node_to_u16_index(&it))
+                .collect::<Result<SmallVec<[u16; 4]>, ImportGltfError>>()?;
+
+            let transform = Transform::new(node.transform().matrix());
+
+            let meshes = match node.mesh() {
+                Some(mesh) => self.import_gltf_mesh(mesh)?,
+                None => vec![],
+            };
+
+            let skin = match node.skin() {
+                Some(skin) => {
+                    let joints = skin
+                        .joints()
+                        .map(|it| map_node_to_u16_index(&it))
+                        .collect::<Result<SmallVec<[u16; 4]>, ImportGltfError>>()?;
+
+                    let skeleton = match skin.skeleton().map(|it| map_node_to_u16_index(&it)) {
+                        Some(Ok(it)) => Ok(Some(it)),
+                        Some(Err(e)) => Err(e),
+                        None => Ok(None),
+                    }?;
+
+                    Some(Skin { joints, skeleton })
+                }
+                None => None,
+            };
+
+            nodes.push(Node {
+                parent,
+                children,
+                transform,
+                meshes,
+                skin,
+            });
+        }
+
         let transform = Transform::new([
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -96,52 +157,11 @@ impl Importer {
             [0.0, 0.0, 0.0, 1.0],
         ]);
 
-        let (meshes, mesh_transforms) = self.collect_scene_meshes(scene, &transform)?;
-
-        let skin = None;
-
-        Ok(Entity {
-            meshes,
-            mesh_transforms,
-            skin,
+        Ok(Scene {
             transform,
+            nodes,
+            root_nodes,
         })
-    }
-
-    fn collect_scene_meshes(
-        &mut self,
-        scene: gltf::Scene,
-        base_transform: &Transform,
-    ) -> Result<(Vec<Mesh>, Vec<Transform>), ImportGltfError> {
-        let mut meshes = vec![];
-        let mut transforms = vec![];
-
-        let mut node_stack: Vec<(gltf::Node, Transform)> =
-            scene.nodes().zip(repeat(base_transform).cloned()).collect();
-
-        loop {
-            let (node, parent_transform) = match node_stack.pop() {
-                Some(n) => n,
-                None => break,
-            };
-
-            let transform = {
-                let parent_transform = Mat4::from_cols_array_2d(parent_transform.mat4());
-                let node_transform = Mat4::from_cols_array_2d(&node.transform().matrix());
-                Transform::new((node_transform * parent_transform).to_cols_array_2d())
-            };
-
-            node_stack.extend(node.children().zip(repeat(&transform).cloned()));
-
-            if let Some(mesh) = node.mesh() {
-                let import = self.import_gltf_mesh(mesh)?;
-
-                transforms.extend(repeat(transform).take(import.len()));
-                meshes.extend(import);
-            }
-        }
-
-        Ok((meshes, transforms))
     }
 
     fn import_gltf_buffer(&mut self, buffer: gltf::Buffer) -> Result<Vec<u8>, ImportGltfError> {
@@ -456,6 +476,12 @@ fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::Deco
     Ok((bytes, mt))
 }
 
+fn map_node_to_u16_index(node: &gltf::Node) -> Result<u16, ImportGltfError> {
+    node.index()
+        .try_into()
+        .map_err(|_| ImportGltfError::NodeIndexOutOfRange(node.index()))
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum ImportGltfError {
     #[error("io error: {0}")]
@@ -490,6 +516,8 @@ pub enum ImportGltfError {
     UnknownTextureIndex(usize),
     #[error("unkown skin index {0}")]
     UnknownSkinIndex(usize),
+    #[error("node index {0} out of range")]
+    NodeIndexOutOfRange(usize),
     #[error("unreachable")]
     Unreachable,
 }
