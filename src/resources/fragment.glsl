@@ -11,6 +11,7 @@ uniform sampler2D normal_texture;
 uniform bool has_diffuse_texture;
 uniform bool has_normal_texture;
 uniform vec4 base_diffuse_color;
+uniform bool shaded;
 
 const vec3 specular_color = vec3(1.0, 1.0, 1.0);
 
@@ -30,6 +31,17 @@ mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
 }
 
 void main() {
+    if (!shaded) {
+        vec3 diffuse_color;
+        if (has_diffuse_texture) {
+            diffuse_color = texture(diffuse_texture, v_uv).rgb;
+        } else {
+            diffuse_color = base_diffuse_color.rgb;
+        }
+        color = vec4(diffuse_color, 1.0);
+        return;
+    }
+
     vec3 real_normal;
     if (has_normal_texture) {
         real_normal = texture(normal_texture, v_uv).rgb;

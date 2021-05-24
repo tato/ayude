@@ -1,5 +1,5 @@
 use ayude::{
-    graphics::{self},
+    graphics::{self, Material, Mesh},
     import_gltf, Scene, Transform,
 };
 use glam::{Mat4, Vec3};
@@ -10,9 +10,11 @@ use glutin::{
     window::WindowBuilder,
     Api, ContextBuilder, GlProfile, GlRequest, Robustness,
 };
+use image::EncodableLayout;
 use std::{
     convert::TryInto,
     f32::consts::PI,
+    io::Read,
     time::{Duration, Instant},
 };
 
@@ -38,6 +40,8 @@ pub struct World {
     the_scene: Scene,
     the_sphere: Scene,
 
+    ricardo: graphics::Texture,
+
     rendering_skin: bool,
 
     renderer: WackyRenderer,
@@ -57,6 +61,19 @@ impl World {
 
         let the_sphere = import_gltf::import_default("samples/sphere.gltf").unwrap();
 
+        let ricardo = {
+            let file = std::fs::read("samples/ricardo.jpg").unwrap();
+            let image = image::load_from_memory(&file).unwrap();
+            let image = image.into_rgba();
+            graphics::Texture::builder(
+                image.as_bytes(),
+                image.width() as u16,
+                image.height() as u16,
+                graphics::texture::TextureFormat::RGBA,
+            )
+            .build()
+        };
+
         let world = World {
             camera_position: [0.0, 0.0, 37.0].into(),
             camera_yaw: std::f32::consts::PI,
@@ -66,6 +83,8 @@ impl World {
 
             the_scene: the_entity,
             the_sphere,
+
+            ricardo,
 
             rendering_skin: false,
 
@@ -105,6 +124,9 @@ impl World {
             if !self.rendering_skin {
                 self.renderer
                     .render_scene(&self.the_scene, &frame, &perspective, &view);
+                let translation = Vec3::new(-1.0, -1.0, 0.0);
+                self.renderer
+                    .render_billboard(&self.ricardo, &frame, translation, &perspective, &view);
             } else {
                 let scene = &self.the_scene;
                 for node in &scene.nodes {
@@ -210,10 +232,61 @@ impl WackyRenderer {
                     .uniform("base_diffuse_color", material.base_diffuse_color);
                 self.shader
                     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+                self.shader.uniform("shaded", true);
 
                 frame.render(mesh, &self.shader);
             }
         }
+    }
+
+    fn render_billboard(
+        &mut self,
+        texture: &graphics::Texture,
+        frame: &graphics::Frame,
+        translation: Vec3,
+        perspective: &Mat4,
+        view: &Mat4,
+    ) {
+        let positions = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ];
+        let normals = [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ];
+        let uvs = [[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
+        let indices = [0, 1, 2, 3, 2, 1];
+        let material = Material {
+            base_diffuse_color: [1.0, 1.0, 1.0, 1.0],
+            diffuse: None,
+            normal: None,
+        };
+        let mesh = Mesh::new(&positions, &normals, &uvs, &indices, &material);
+
+        let w = texture.width() as f32;
+        let h = texture.height() as f32;
+        let scale = Vec3::new(
+            w / w.max(h) * 10.0,
+            h / w.max(h) * 10.0,
+            1.0,
+        );
+        let model = Mat4::from_scale(scale) * Mat4::from_translation(translation);
+
+        self.shader
+            .uniform("perspective", perspective.to_cols_array_2d());
+        self.shader.uniform("view", view.to_cols_array_2d());
+        self.shader.uniform("model", model.to_cols_array_2d());
+        self.shader.uniform("diffuse_texture", texture.clone());
+        self.shader.uniform("has_diffuse_texture", true);
+        self.shader.uniform("has_normal_texture", false);
+        self.shader.uniform("shaded", false);
+
+        frame.render(&mesh, &self.shader);
     }
 }
 
