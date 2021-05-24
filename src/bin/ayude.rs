@@ -1,4 +1,7 @@
-use ayude::{Scene, Transform, graphics::{self}, import_gltf};
+use ayude::{
+    graphics::{self},
+    import_gltf, Scene, Transform,
+};
 use glam::{Mat4, Vec3};
 use glutin::{
     dpi::LogicalSize,
@@ -8,6 +11,7 @@ use glutin::{
     Api, ContextBuilder, GlProfile, GlRequest, Robustness,
 };
 use std::{
+    convert::TryInto,
     f32::consts::PI,
     time::{Duration, Instant},
 };
@@ -31,12 +35,12 @@ pub struct World {
 
     movement: [f32; 2], // stores WASD input
 
-    shader: graphics::Shader,
-
     the_scene: Scene,
     the_sphere: Scene,
 
     rendering_skin: bool,
+
+    renderer: WackyRenderer,
 }
 
 impl World {
@@ -44,6 +48,8 @@ impl World {
         static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
+
+        let render_thing = WackyRenderer { shader };
 
         let gltf_file_name = "samples/knight/knight.gltf";
         // let gltf_file_name = "samples/principito_y_el_aviador/scene.gltf";
@@ -58,12 +64,12 @@ impl World {
 
             movement: [0.0, 0.0],
 
-            shader,
-
             the_scene: the_entity,
             the_sphere,
 
             rendering_skin: false,
+
+            renderer: render_thing,
         };
 
         world
@@ -97,64 +103,116 @@ impl World {
 
         {
             if !self.rendering_skin {
+                self.renderer
+                    .render_scene(&self.the_scene, &frame, &perspective, &view);
+            } else {
                 let scene = &self.the_scene;
-                let base_transform = &scene.transform;
                 for node in &scene.nodes {
-                    if node.meshes.is_empty() {
-                        continue;
-                    }
-
-                    let transform = {
-                        let mut current = node;
-                        let mut transform = Mat4::from_cols_array_2d(node.transform.mat4());
-                        'transform: loop {
-                            current = match current.parent {
-                                Some(index) => &scene.nodes[usize::from(index)],
-                                None => break 'transform,
-                            };
-                            
-                            transform = transform * Mat4::from_cols_array_2d(current.transform.mat4());
-                        }
-                        Transform::new(transform.to_cols_array_2d())
+                    let skin = match node.skin.as_ref() {
+                        Some(skin) => skin,
+                        None => continue,
                     };
 
-                    for mesh in &node.meshes {
-                        let material = &mesh.material;
-                        let diffuse = material.diffuse.as_ref();
-                        let normal = material.normal.as_ref();
-    
-                        let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
-                        let mesh_transform = Mat4::from_cols_array_2d(transform.mat4());
-                        let model = (mesh_transform * base_transform).to_cols_array_2d();
-    
-                        self.shader
-                            .uniform("perspective", perspective.to_cols_array_2d());
-                        self.shader.uniform("view", view.to_cols_array_2d());
-                        self.shader.uniform("model", model);
-                        self.shader.uniform(
-                            "diffuse_texture",
-                            diffuse.cloned().unwrap_or(graphics::Texture::empty()),
+                    let skeleton_transform = match skin.skeleton {
+                        Some(skeleton) => Transform::new(
+                            scene.nodes[usize::from(skeleton)].transform.mat4().clone(),
+                        ),
+                        None => scene.transform.clone(),
+                    };
+
+                    for &joint in &skin.joints {
+                        let joint = &scene.nodes[usize::from(joint)];
+
+                        let mut transform = Mat4::from_cols_array_2d(joint.transform.mat4());
+                        let mut current = joint;
+                        'transform: loop {
+                            match current.parent {
+                                Some(index) => current = &scene.nodes[usize::from(index)],
+                                None => break 'transform,
+                            }
+                            transform =
+                                transform * Mat4::from_cols_array_2d(current.transform.mat4());
+                        }
+
+                        self.the_sphere.transform = Transform::new(
+                            (transform
+                                * Mat4::from_cols_array_2d(skeleton_transform.mat4())
+                                * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)))
+                            .to_cols_array_2d(),
                         );
-                        self.shader.uniform(
-                            "normal_texture",
-                            normal.cloned().unwrap_or(graphics::Texture::empty()),
-                        );
-                        self.shader
-                            .uniform("has_diffuse_texture", diffuse.is_some());
-                        self.shader.uniform("has_normal_texture", normal.is_some());
-                        self.shader
-                            .uniform("base_diffuse_color", material.base_diffuse_color);
-                        self.shader
-                            .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
-    
-                        frame.render(mesh, &self.shader);
+
+                        self.renderer
+                            .render_scene(&self.the_sphere, &frame, &perspective, &view);
                     }
                 }
-
-            } else {
-                
-                // let joint_stack = vec![];
             };
+        }
+    }
+}
+
+pub struct WackyRenderer {
+    shader: graphics::Shader,
+}
+
+impl WackyRenderer {
+    fn render_scene(
+        &mut self,
+        scene: &Scene,
+        frame: &graphics::Frame,
+        perspective: &Mat4,
+        view: &Mat4,
+    ) {
+        let base_transform = &scene.transform;
+        for node in &scene.nodes {
+            if node.meshes.is_empty() {
+                continue;
+            }
+
+            let transform = {
+                let mut current = node;
+                let mut transform = Mat4::from_cols_array_2d(node.transform.mat4());
+                'transform: loop {
+                    current = match current.parent {
+                        Some(index) => &scene.nodes[usize::from(index)],
+                        None => break 'transform,
+                    };
+
+                    transform = transform * Mat4::from_cols_array_2d(current.transform.mat4());
+                }
+                Transform::new(transform.to_cols_array_2d())
+            };
+
+            for mesh in &node.meshes {
+                let material = &mesh.material;
+                let diffuse = material.diffuse.as_ref();
+                let normal = material.normal.as_ref();
+
+                let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
+                let mesh_transform = Mat4::from_cols_array_2d(transform.mat4());
+                let model = (mesh_transform * base_transform).to_cols_array_2d();
+
+                self.shader
+                    .uniform("perspective", perspective.to_cols_array_2d());
+                self.shader.uniform("view", view.to_cols_array_2d());
+                self.shader.uniform("model", model);
+                self.shader.uniform(
+                    "diffuse_texture",
+                    diffuse.cloned().unwrap_or(graphics::Texture::empty()),
+                );
+                self.shader.uniform(
+                    "normal_texture",
+                    normal.cloned().unwrap_or(graphics::Texture::empty()),
+                );
+                self.shader
+                    .uniform("has_diffuse_texture", diffuse.is_some());
+                self.shader.uniform("has_normal_texture", normal.is_some());
+                self.shader
+                    .uniform("base_diffuse_color", material.base_diffuse_color);
+                self.shader
+                    .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+
+                frame.render(mesh, &self.shader);
+            }
         }
     }
 }

@@ -141,14 +141,19 @@ impl Importer {
                 None => None,
             };
 
-            nodes.push(Node {
+            nodes.push((node_index, Node {
                 parent,
                 children,
                 transform,
                 meshes,
                 skin,
-            });
+            }));
         }
+
+        nodes.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+        let nodes = nodes.into_iter().map(|it| it.1).collect();
+
 
         let transform = Transform::new([
             [1.0, 0.0, 0.0, 0.0],
