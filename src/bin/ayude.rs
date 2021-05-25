@@ -5,13 +5,7 @@ use ayude::{
     Scene,
 };
 use glam::{Mat4, Vec3};
-use glutin::{
-    dpi::LogicalSize,
-    event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-    Api, ContextBuilder, GlProfile, GlRequest, Robustness,
-};
+use glutin::{Api, ContextBuilder, GlProfile, GlRequest, Robustness, dpi::LogicalSize, event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent}, event_loop::{ControlFlow, EventLoop}, window::{Window, WindowBuilder}};
 use image::EncodableLayout;
 use std::{
     f32::consts::PI,
@@ -348,7 +342,7 @@ fn main() {
             },
             Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
-                    game.camera_yaw -= delta.0 as f32 * 0.006;
+                    game.camera_yaw -= delta.0 as f32 / 150.0;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
                     }
@@ -357,7 +351,7 @@ fn main() {
                     }
 
                     let freedom_y = 0.8;
-                    game.camera_pitch += delta.1 as f32 * 0.006;
+                    game.camera_pitch += delta.1 as f32 / 150.0;
                     game.camera_pitch = game
                         .camera_pitch
                         .max(-PI / 2.0 * freedom_y)
@@ -406,11 +400,15 @@ fn main() {
                 window.window().request_redraw();
             }
             Event::RedrawRequested(..) => {
-                let inner_size = window.window().inner_size();
-                game.render((inner_size.width as i32, inner_size.height as i32));
+                game.render(get_window_dimensions(window.window()));
                 window.swap_buffers().unwrap();
             }
             _ => return,
         }
     });
+}
+
+fn get_window_dimensions(window: &Window) -> (i32, i32) {
+    let inner_size = window.inner_size();
+    (inner_size.width as i32, inner_size.height as i32)
 }
