@@ -6,8 +6,10 @@ pub mod graphics;
 pub mod catalog;
 pub use catalog::Catalog;
 use smallvec::SmallVec;
+use transform::Transform;
 
 pub mod import_gltf;
+pub mod transform;
 
 #[derive(Debug)]
 pub struct Scene {
@@ -29,16 +31,4 @@ pub struct Node {
 pub struct Skin {
     pub joints: SmallVec<[u16; 4]>,
     pub skeleton: Option<u16>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Transform([[f32; 4]; 4]);
-
-impl Transform {
-    pub fn new(mat: [[f32; 4]; 4]) -> Transform {
-        Transform(mat)
-    }
-    pub fn mat4(&self) -> &[[f32; 4]; 4] {
-        &self.0
-    }
 }

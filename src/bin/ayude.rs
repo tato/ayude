@@ -1,6 +1,8 @@
 use ayude::{
     graphics::{self, Material, Mesh},
-    import_gltf, Scene, Transform,
+    import_gltf,
+    transform::Transform,
+    Scene,
 };
 use glam::{Mat4, Vec3};
 use glutin::{
@@ -12,9 +14,7 @@ use glutin::{
 };
 use image::EncodableLayout;
 use std::{
-    convert::TryInto,
     f32::consts::PI,
-    io::Read,
     time::{Duration, Instant},
 };
 
@@ -125,8 +125,13 @@ impl World {
                 self.renderer
                     .render_scene(&self.the_scene, &frame, &perspective, &view);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
-                self.renderer
-                    .render_billboard(&self.ricardo, &frame, translation, &perspective, &view);
+                self.renderer.render_billboard(
+                    &self.ricardo,
+                    &frame,
+                    translation,
+                    &perspective,
+                    &view,
+                );
             } else {
                 let scene = &self.the_scene;
                 for node in &scene.nodes {
@@ -136,7 +141,7 @@ impl World {
                     };
 
                     let skeleton_transform = match skin.skeleton {
-                        Some(skeleton) => Transform::new(
+                        Some(skeleton) => Transform::from(
                             scene.nodes[usize::from(skeleton)].transform.mat4().clone(),
                         ),
                         None => scene.transform.clone(),
@@ -145,22 +150,19 @@ impl World {
                     for &joint in &skin.joints {
                         let joint = &scene.nodes[usize::from(joint)];
 
-                        let mut transform = Mat4::from_cols_array_2d(joint.transform.mat4());
+                        let mut transform = joint.transform.mat4().clone();
                         let mut current = joint;
                         'transform: loop {
                             match current.parent {
                                 Some(index) => current = &scene.nodes[usize::from(index)],
                                 None => break 'transform,
                             }
-                            transform =
-                                transform * Mat4::from_cols_array_2d(current.transform.mat4());
+                            transform = transform.mul_mat4(current.transform.mat4());
                         }
 
-                        self.the_sphere.transform = Transform::new(
-                            (transform
-                                * Mat4::from_cols_array_2d(skeleton_transform.mat4())
-                                * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)))
-                            .to_cols_array_2d(),
+                        self.the_sphere.transform = Transform::from(
+                            transform.mul_mat4(skeleton_transform.mat4())
+                                * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
                         );
 
                         self.renderer
@@ -192,16 +194,16 @@ impl WackyRenderer {
 
             let transform = {
                 let mut current = node;
-                let mut transform = Mat4::from_cols_array_2d(node.transform.mat4());
+                let mut transform = node.transform.mat4().clone();
                 'transform: loop {
                     current = match current.parent {
                         Some(index) => &scene.nodes[usize::from(index)],
                         None => break 'transform,
                     };
 
-                    transform = transform * Mat4::from_cols_array_2d(current.transform.mat4());
+                    transform = transform.mul_mat4(current.transform.mat4());
                 }
-                Transform::new(transform.to_cols_array_2d())
+                Transform::from(transform)
             };
 
             for mesh in &node.meshes {
@@ -209,8 +211,8 @@ impl WackyRenderer {
                 let diffuse = material.diffuse.as_ref();
                 let normal = material.normal.as_ref();
 
-                let base_transform = Mat4::from_cols_array_2d(base_transform.mat4());
-                let mesh_transform = Mat4::from_cols_array_2d(transform.mat4());
+                let base_transform = base_transform.mat4().clone();
+                let mesh_transform = transform.mat4().clone();
                 let model = (mesh_transform * base_transform).to_cols_array_2d();
 
                 self.shader
@@ -270,11 +272,7 @@ impl WackyRenderer {
 
         let w = texture.width() as f32;
         let h = texture.height() as f32;
-        let scale = Vec3::new(
-            w / w.max(h) * 10.0,
-            h / w.max(h) * 10.0,
-            1.0,
-        );
+        let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
         let model = Mat4::from_scale(scale) * Mat4::from_translation(translation);
 
         self.shader

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, convert::TryInto, iter::repeat};
 
-
+use glam::Mat4;
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 use smallvec::SmallVec;
 
@@ -9,7 +9,8 @@ use crate::{
         texture::{MagFilter, MinFilter, TextureFormat, TextureWrap},
         Material, Mesh, Texture,
     },
-    Node, Scene, Skin, Transform,
+    transform::Transform,
+    Node, Scene, Skin,
 };
 
 // notes:
@@ -116,7 +117,7 @@ impl Importer {
                 .map(|it| map_node_to_u16_index(&it))
                 .collect::<Result<SmallVec<[u16; 4]>, ImportGltfError>>()?;
 
-            let transform = Transform::new(node.transform().matrix());
+            let transform = Transform::from(Mat4::from_cols_array_2d(&node.transform().matrix()));
 
             let meshes = match node.mesh() {
                 Some(mesh) => self.import_gltf_mesh(mesh)?,
@@ -141,26 +142,28 @@ impl Importer {
                 None => None,
             };
 
-            nodes.push((node_index, Node {
-                parent,
-                children,
-                transform,
-                meshes,
-                skin,
-            }));
+            nodes.push((
+                node_index,
+                Node {
+                    parent,
+                    children,
+                    transform,
+                    meshes,
+                    skin,
+                },
+            ));
         }
 
         nodes.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
         let nodes = nodes.into_iter().map(|it| it.1).collect();
 
-
-        let transform = Transform::new([
+        let transform = Transform::from(Mat4::from_cols_array_2d(&[
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
-        ]);
+        ]));
 
         Ok(Scene {
             transform,
