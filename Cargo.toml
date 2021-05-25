@@ -21,3 +21,4 @@ gltf = { version="0.16", default-features=false, features=["utils"] }
 base64 = "0.13"
 msgbox = "0"
 smallvec = { version = "1.6", features = [ "union" ] }
+rusttype = "0.9"

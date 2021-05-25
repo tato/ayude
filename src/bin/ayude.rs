@@ -1,4 +1,10 @@
-use ayude::{Scene, camera::Camera, graphics::{self, Material, Mesh}, import_gltf, transform::{GLOBAL_UP, Transform}};
+use ayude::{
+    camera::Camera,
+    graphics::{self, Material, Mesh},
+    import_gltf,
+    transform::{Transform, GLOBAL_UP},
+    Scene,
+};
 use glam::{Mat4, Quat, Vec2, Vec3};
 use glutin::{
     dpi::LogicalSize,
@@ -8,9 +14,8 @@ use glutin::{
     Api, ContextBuilder, GlProfile, GlRequest, Robustness,
 };
 use image::EncodableLayout;
-use std::{
-    time::{Duration, Instant},
-};
+use rusttype::{Font, Scale};
+use std::time::{Duration, Instant};
 
 pub struct World {
     camera: Camera,
@@ -55,6 +60,58 @@ impl World {
         };
 
         let camera = Camera::new(Vec3::from([0.0, 0.0, 37.0]), std::f32::consts::PI, 0.0);
+
+        let ricardo = {
+            let data = std::fs::read("data/Cousine.ttf").expect("font file should exist");
+            let font = Font::try_from_vec(data).expect("font should load");
+
+            let height: f32 = 12.4;
+            let pixel_height = height.ceil() as usize;
+
+            let scale = Scale {
+                x: height * 2.0,
+                y: height,
+            };
+
+            let v_metrics = font.v_metrics(scale);
+            let offset = rusttype::point(0.0, v_metrics.ascent);
+
+            let glyphs: Vec<_> = font.layout("RIGHT NOW.", scale, offset).collect();
+
+            let width = glyphs
+                .iter()
+                .rev()
+                .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
+                .next()
+                .unwrap_or(0.0)
+                .ceil() as usize;
+
+            let mut pixel_data = vec![0u8; width * pixel_height * 4];
+            for g in glyphs {
+                if let Some(bb) = g.pixel_bounding_box() {
+                    g.draw(|x, y, v| {
+                        let gray = (v * 255.5) as u8;
+                        let x = x as i32 + bb.min.x ;
+                        let y = y as i32 + bb.min.y;
+                        if x >= 0 && x < width as i32 && y >= 0 && y < pixel_height as i32 {
+                            let i = (y as usize * width + x as usize) * 4;
+                            pixel_data[i] = gray;
+                            pixel_data[i + 1] = gray;
+                            pixel_data[i + 2] = gray;
+                            pixel_data[i + 3] = 255;
+                        }
+                    });
+                }
+            }
+
+            graphics::Texture::builder(
+                &pixel_data,
+                width as u16,
+                pixel_height as u16,
+                graphics::texture::TextureFormat::RGBA,
+            )
+            .build()
+        };
 
         let world = World {
             camera,
@@ -251,11 +308,12 @@ impl WackyRenderer {
             let pitch = f32::asin(fwd.y());
             Mat4::from_rotation_ypr(-yaw, pitch, 0.0)
         };
-        let model =  Mat4::from_translation(position) * rotation * Mat4::from_scale(scale) ;
+        let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
 
         self.shader
             .uniform("perspective", perspective.to_cols_array_2d());
-        self.shader.uniform("view", camera.view().to_cols_array_2d());
+        self.shader
+            .uniform("view", camera.view().to_cols_array_2d());
         self.shader.uniform("model", model.to_cols_array_2d());
         self.shader.uniform("diffuse_texture", texture.clone());
         self.shader.uniform("has_diffuse_texture", true);
