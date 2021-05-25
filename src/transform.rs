@@ -18,6 +18,11 @@ impl Transform {
         &self.0
     }
 
+    pub fn position(&self) -> Vec3 {
+        let (_, _, position) = self.0.to_scale_rotation_translation();
+        position
+    }
+
     pub fn forward(&self) -> Vec3 {
         let fwd = self.0 * Vec4::new(GLOBAL_FORWARD[0], GLOBAL_FORWARD[1], GLOBAL_FORWARD[2], 0.0);
         Vec3::new(fwd.x(), fwd.y(), fwd.z()).normalize()

@@ -1,11 +1,5 @@
-use ayude::{
-    camera::Camera,
-    graphics::{self, Material, Mesh},
-    import_gltf,
-    transform::Transform,
-    Scene,
-};
-use glam::{Mat4, Vec2, Vec3};
+use ayude::{Scene, camera::Camera, graphics::{self, Material, Mesh}, import_gltf, transform::{GLOBAL_UP, Transform}};
+use glam::{Mat4, Quat, Vec2, Vec3};
 use glutin::{
     dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -107,7 +101,7 @@ impl World {
                     &frame,
                     translation,
                     &perspective,
-                    &view,
+                    &self.camera,
                 );
             } else {
                 let scene = &self.the_scene;
@@ -222,14 +216,14 @@ impl WackyRenderer {
         &mut self,
         texture: &graphics::Texture,
         frame: &graphics::Frame,
-        translation: Vec3,
+        position: Vec3,
         perspective: &Mat4,
-        view: &Mat4,
+        camera: &Camera,
     ) {
         let positions = [
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [-1.0, 1.0, 0.0],
             [1.0, 1.0, 0.0],
         ];
         let normals = [
@@ -250,11 +244,18 @@ impl WackyRenderer {
         let w = texture.width() as f32;
         let h = texture.height() as f32;
         let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
-        let model = Mat4::from_scale(scale) * Mat4::from_translation(translation);
+        let rotation = {
+            let fwd = camera.transform().position() - position;
+            let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
+            let yaw = f32::atan2(fwd.z(), fwd.x());
+            let pitch = f32::asin(fwd.y());
+            Mat4::from_rotation_ypr(-yaw, pitch, 0.0)
+        };
+        let model =  Mat4::from_translation(position) * rotation * Mat4::from_scale(scale) ;
 
         self.shader
             .uniform("perspective", perspective.to_cols_array_2d());
-        self.shader.uniform("view", view.to_cols_array_2d());
+        self.shader.uniform("view", camera.view().to_cols_array_2d());
         self.shader.uniform("model", model.to_cols_array_2d());
         self.shader.uniform("diffuse_texture", texture.clone());
         self.shader.uniform("has_diffuse_texture", true);

@@ -32,8 +32,8 @@ impl Camera {
     // movement.x is sideways movement, movement.y is forward/back
     pub fn drive(&mut self, movement: Vec2) {
         let xform = self.transform();
-        self.position += xform.forward() * movement.x() * self.speed;
-        self.position += xform.left() * movement.y() * self.speed;
+        self.position -= xform.left() * movement.x() * self.speed;
+        self.position += xform.forward() * movement.y() * self.speed;
     }
 
     pub fn view(&self) -> Mat4 {
