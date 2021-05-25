@@ -1,23 +1,25 @@
 use ayude::{
+    camera::Camera,
     graphics::{self, Material, Mesh},
     import_gltf,
     transform::Transform,
     Scene,
 };
-use glam::{Mat4, Vec3};
-use glutin::{Api, ContextBuilder, GlProfile, GlRequest, Robustness, dpi::LogicalSize, event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent}, event_loop::{ControlFlow, EventLoop}, window::{Window, WindowBuilder}};
+use glam::{Mat4, Vec2, Vec3};
+use glutin::{
+    dpi::LogicalSize,
+    event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+    Api, ContextBuilder, GlProfile, GlRequest, Robustness,
+};
 use image::EncodableLayout;
 use std::{
-    f32::consts::PI,
     time::{Duration, Instant},
 };
 
-const UP_VECTOR: [f32; 3] = [0.0, 1.0, 0.0];
-
 pub struct World {
-    camera_position: Vec3,
-    camera_yaw: f32,   // radians
-    camera_pitch: f32, // radians
+    camera: Camera,
 
     movement: [f32; 2], // stores WASD input
 
@@ -58,10 +60,10 @@ impl World {
             .build()
         };
 
+        let camera = Camera::new(Vec3::from([0.0, 0.0, 37.0]), std::f32::consts::PI, 0.0);
+
         let world = World {
-            camera_position: [0.0, 0.0, 37.0].into(),
-            camera_yaw: std::f32::consts::PI,
-            camera_pitch: 0.0,
+            camera,
 
             movement: [0.0, 0.0],
 
@@ -79,26 +81,11 @@ impl World {
     }
 
     fn update(&mut self, delta: Duration) {
-        let forward_direction = Transform::from(Mat4::from_rotation_ypr(
-            self.camera_yaw,
-            self.camera_pitch,
-            0.0,
-        ))
-        .forward();
-        let right_direction = forward_direction.cross(UP_VECTOR.into()).normalize();
-
-        let speed = 100.0;
-        self.camera_position += forward_direction * self.movement[1] * speed * delta.as_secs_f32();
-        self.camera_position += right_direction * self.movement[0] * speed * delta.as_secs_f32();
+        let mov = Vec2::from(self.movement) * delta.as_secs_f32();
+        self.camera.drive(mov);
     }
 
     fn render(&mut self, window_dimensions: (i32, i32)) {
-        let forward_direction = Transform::from(Mat4::from_rotation_ypr(
-            self.camera_yaw,
-            self.camera_pitch,
-            0.0,
-        ))
-        .forward();
         let frame = graphics::Frame::start([0.1, 0.1, 0.1], window_dimensions);
 
         let perspective = glam::Mat4::perspective_rh_gl(
@@ -108,11 +95,7 @@ impl World {
             1024.0,
         );
 
-        let view = glam::Mat4::look_at_rh(
-            self.camera_position,
-            self.camera_position + forward_direction,
-            UP_VECTOR.into(),
-        );
+        let view = self.camera.view();
 
         {
             if !self.rendering_skin {
@@ -342,20 +325,8 @@ fn main() {
             },
             Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
-                    game.camera_yaw -= delta.0 as f32 / 150.0;
-                    if game.camera_yaw >= 2.0 * PI {
-                        game.camera_yaw -= 2.0 * PI;
-                    }
-                    if game.camera_yaw <= 0.0 {
-                        game.camera_yaw += 2.0 * PI;
-                    }
-
-                    let freedom_y = 0.8;
-                    game.camera_pitch += delta.1 as f32 / 150.0;
-                    game.camera_pitch = game
-                        .camera_pitch
-                        .max(-PI / 2.0 * freedom_y)
-                        .min(PI / 2.0 * freedom_y);
+                    game.camera
+                        .rotate(Vec2::new(delta.0 as f32, delta.1 as f32) / 150.0);
                 }
                 DeviceEvent::Key(input) => match input.virtual_keycode {
                     Some(VirtualKeyCode::W) => {

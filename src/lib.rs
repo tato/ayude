@@ -10,6 +10,7 @@ use transform::Transform;
 
 pub mod import_gltf;
 pub mod transform;
+pub mod camera;
 
 #[derive(Debug)]
 pub struct Scene {
