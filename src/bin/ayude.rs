@@ -20,16 +20,6 @@ use std::{
 
 const UP_VECTOR: [f32; 3] = [0.0, 1.0, 0.0];
 
-fn calculate_forward_direction(yaw: f32, pitch: f32) -> Vec3 {
-    let result: Vec3 = [
-        (-yaw).sin() * pitch.cos(),
-        pitch.sin(),
-        (-yaw).cos() * pitch.cos(),
-    ]
-    .into();
-    result.normalize()
-}
-
 pub struct World {
     camera_position: Vec3,
     camera_yaw: f32,   // radians
@@ -95,7 +85,12 @@ impl World {
     }
 
     fn update(&mut self, delta: Duration) {
-        let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
+        let forward_direction = Transform::from(Mat4::from_rotation_ypr(
+            self.camera_yaw,
+            self.camera_pitch,
+            0.0,
+        ))
+        .forward();
         let right_direction = forward_direction.cross(UP_VECTOR.into()).normalize();
 
         let speed = 100.0;
@@ -104,7 +99,12 @@ impl World {
     }
 
     fn render(&mut self, window_dimensions: (i32, i32)) {
-        let forward_direction = calculate_forward_direction(self.camera_yaw, self.camera_pitch);
+        let forward_direction = Transform::from(Mat4::from_rotation_ypr(
+            self.camera_yaw,
+            self.camera_pitch,
+            0.0,
+        ))
+        .forward();
         let frame = graphics::Frame::start([0.1, 0.1, 0.1], window_dimensions);
 
         let perspective = glam::Mat4::perspective_rh_gl(
@@ -348,7 +348,7 @@ fn main() {
             },
             Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::MouseMotion { delta } => {
-                    game.camera_yaw += delta.0 as f32 * 0.006;
+                    game.camera_yaw -= delta.0 as f32 * 0.006;
                     if game.camera_yaw >= 2.0 * PI {
                         game.camera_yaw -= 2.0 * PI;
                     }
@@ -357,7 +357,7 @@ fn main() {
                     }
 
                     let freedom_y = 0.8;
-                    game.camera_pitch -= delta.1 as f32 * 0.006;
+                    game.camera_pitch += delta.1 as f32 * 0.006;
                     game.camera_pitch = game
                         .camera_pitch
                         .max(-PI / 2.0 * freedom_y)
