@@ -46,22 +46,22 @@ impl World {
 
         let the_sphere = import_gltf::import_default("samples/sphere.gltf").unwrap();
 
-        let ricardo = {
-            let file = std::fs::read("samples/ricardo.jpg").unwrap();
-            let image = image::load_from_memory(&file).unwrap();
-            let image = image.into_rgba();
-            graphics::Texture::builder(
-                image.as_bytes(),
-                image.width() as u16,
-                image.height() as u16,
-                graphics::texture::TextureFormat::RGBA,
-            )
-            .build()
-        };
+        // let ricardo = {
+        //     let file = std::fs::read("samples/ricardo.jpg").unwrap();
+        //     let image = image::load_from_memory(&file).unwrap();
+        //     let image = image.into_rgba();
+        //     graphics::Texture::builder(
+        //         image.as_bytes(),
+        //         image.width() as u16,
+        //         image.height() as u16,
+        //         graphics::texture::TextureFormat::RGBA,
+        //     )
+        //     .build()
+        // };
 
         let camera = Camera::new(Vec3::from([0.0, 0.0, 37.0]), std::f32::consts::PI, 0.0);
 
-        let ricardo = {
+        let test_font_texture = {
             let data = std::fs::read("data/Cousine.ttf").expect("font file should exist");
             let font = Font::try_from_vec(data).expect("font should load");
 
@@ -121,7 +121,7 @@ impl World {
             the_scene: the_entity,
             the_sphere,
 
-            ricardo,
+            ricardo: test_font_texture,
 
             rendering_skin: false,
 
