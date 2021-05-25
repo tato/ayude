@@ -77,7 +77,7 @@ impl Shader {
                         buffer.as_mut_ptr() as *mut i8,
                     );
 
-                    let name = std::str::from_utf8_unchecked(&buffer[0..result_length as usize]);
+                    // let name = std::str::from_utf8_unchecked(&buffer[0..result_length as usize]);
                     // println!("{}: {} ({})", name, result_type, result_size);
                 }
                 Ok(Shader {
