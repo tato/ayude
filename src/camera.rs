@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec2, Vec3};
+use glam::{EulerRot, Mat4, Vec2, Vec3};
 
 use crate::{transform::{GLOBAL_UP, Transform}};
 
@@ -24,7 +24,7 @@ impl Camera {
     }
 
     pub fn transform(&self) -> Transform {
-        let rot = Mat4::from_rotation_ypr(self.yaw, self.pitch, 0.0);
+        let rot = Mat4::from_euler(EulerRot::YXZ, self.yaw, self.pitch, 0.0);
         let tr = Mat4::from_translation(self.position);
         Transform::from(tr * rot)
     }
@@ -32,8 +32,8 @@ impl Camera {
     // movement.x is sideways movement, movement.y is forward/back
     pub fn drive(&mut self, movement: Vec2) {
         let xform = self.transform();
-        self.position -= xform.left() * movement.x() * self.speed;
-        self.position += xform.forward() * movement.y() * self.speed;
+        self.position -= xform.left() * movement.x * self.speed;
+        self.position += xform.forward() * movement.y * self.speed;
     }
 
     pub fn view(&self) -> Mat4 {
@@ -47,7 +47,7 @@ impl Camera {
     pub fn rotate(&mut self, rot: Vec2) {
         use std::f32::consts::PI;
 
-        self.yaw -= rot.x();
+        self.yaw -= rot.x;
         if self.yaw >= 2.0 * PI {
             self.yaw -= 2.0 * PI;
         }
@@ -56,7 +56,7 @@ impl Camera {
         }
 
         let freedom_y = 0.8;
-        self.pitch += rot.y();
+        self.pitch += rot.y;
         self.pitch = self
             .pitch
             .max(-PI / 2.0 * freedom_y)

@@ -5,50 +5,15 @@ use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 use smallvec::SmallVec;
 
 use crate::{
-    graphics::{
-        texture::{MagFilter, MinFilter, TextureFormat, TextureWrap},
-        Material, Mesh, Texture,
-    },
+    graphics::{GraphicsContext, Material, Mesh, Texture, TextureDescription, Vertex},
     transform::Transform,
     Node, Scene, Skin,
 };
 
-// notes:
-// for me, a gltf will only contain 1 entity, with 1 mesh, with 1 skin, with a set of
-// animations, textures and materials. the entity could be and in fact will probably
-// be a tree of nodes, but from outside it will seem a single object.
-// if possible, the set of nodes, meshes and skins in the gltf file should be
-// condensed into 1. if not, we'd have to choose 1 and discard the rest.
-//
-// in reality, a gltf should not import as an "Entity", it should maybe act as an
-// entity blueprint, or even forget the concept of entity and just import the mesh.
-//
-// another option would be to borrow the concept of a "scene" from the gltf. in that
-// case, the gltf would import into a list of "scenes", and the meshes, textures,
-// materials and so on could be shared between these "scenes". then, i'd have a
-// "SceneEntity" object that i could instantiate and would refer to one of these
-// "scenes" as a blueprint.
-//
-// one possible problem with this last approach could be the cleanup stage. if we
-// have so many meshes and textures and so on lying around with no reference to
-// their parent scene, we could end up with some storage issues when we no longer
-// need the scene. a mesh could be used by multiple scenes, so that stuff would
-// need to be checked before it's cleaned up. the solution to that is each
-// "scene" or entity blueprint or whatever having its own copy of a mesh, texture,
-// etc that it needs. OR these meshes, textures, etc being attached to certain
-// "stages" or "levels" of the game which know they need a set of scenes or
-// whatever. this might not be too hard, it could be inferred from the construction
-// of the levels themselves.
-//
-// the clearest of the fuzzy ideas floating around in my mind right now is:
-//   [gltf files] --level editor--> level file --engine loader--> [entity blueprints]
-// i don't have a semblance of a level editor right now, so the association between
-// multiple gltf files could be inferred from filesystem or some other simple system
-// for now. in the future if these are imported to the engine and stuff they will
-// have the possibility of deduping textures and so on, but for now the conclusion is
-// IMPORT SCENES FROM EACH GLTF FILE AND DON'T HAVE A GLOBAL MESH, TEXTURE, ETC THING
-
-pub fn import_default(file_name: &str) -> Result<Scene, ImportGltfError> {
+pub fn import_default_scene(
+    file_name: &str,
+    graphics: &GraphicsContext,
+) -> Result<Scene, ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name)?;
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
@@ -59,24 +24,27 @@ pub fn import_default(file_name: &str) -> Result<Scene, ImportGltfError> {
         materials: vec![None; gltf.document.materials().count()],
         meshes: vec![None; gltf.document.meshes().count()],
         base_path,
+        graphics,
     };
 
-    importer.import_default(gltf.document)
+    importer.import_default_scene(gltf.document)
 }
-struct Importer {
+struct Importer<'gfx> {
     base_path: String,
     blob: Option<Vec<u8>>,
 
     buffers: Vec<Vec<u8>>,
-    images: Vec<(Vec<u8>, u32, u32, TextureFormat)>,
+    images: Vec<(Vec<u8>, u32, u32, wgpu::TextureFormat)>,
 
     textures: Vec<Option<Texture>>,
     materials: Vec<Option<Material>>,
     meshes: Vec<Option<Vec<Mesh>>>,
+
+    graphics: &'gfx GraphicsContext,
 }
 
-impl Importer {
-    fn import_default(&mut self, document: gltf::Document) -> Result<Scene, ImportGltfError> {
+impl<'gfx> Importer<'gfx> {
+    fn import_default_scene(&mut self, document: gltf::Document) -> Result<Scene, ImportGltfError> {
         // check if document has default scene
         let scene = document
             .default_scene()
@@ -191,7 +159,7 @@ impl Importer {
     fn import_gltf_image(
         &self,
         image: gltf::Image,
-    ) -> Result<(Vec<u8>, u32, u32, TextureFormat), ImportGltfError> {
+    ) -> Result<(Vec<u8>, u32, u32, wgpu::TextureFormat), ImportGltfError> {
         let (data, mime_type) = match image.source() {
             gltf::image::Source::Uri { uri, mime_type } => {
                 let (data, parsed_mt) = if uri.starts_with("data:") {
@@ -246,25 +214,19 @@ impl Importer {
         let image = image::load_from_memory_with_format(&data, format)
             .map_err(|e| ImportGltfError::ImageLoadingFailed(image.index().to_string(), e))?;
         match image {
-            DynamicImage::ImageRgb8(rgb) => Ok((
-                rgb.as_bytes().to_owned(),
-                rgb.width(),
-                rgb.height(),
-                TextureFormat::RGB,
-            )),
             DynamicImage::ImageRgba8(rgba) => Ok((
                 rgba.as_bytes().to_owned(),
                 rgba.width(),
                 rgba.height(),
-                TextureFormat::RGBA,
+                wgpu::TextureFormat::Rgba8Unorm,
             )),
             _ => {
-                let rgba = image.into_rgba();
+                let rgba = image.into_rgba8();
                 Ok((
                     rgba.as_bytes().to_owned(),
                     rgba.width(),
                     rgba.height(),
-                    TextureFormat::RGBA,
+                    wgpu::TextureFormat::Rgba8Unorm,
                 ))
             }
         }
@@ -288,37 +250,34 @@ impl Importer {
 
         let sampler = texture.sampler();
 
-        let mut builder = Texture::builder(&data, *width as u16, *height as u16, *format)
+        let mut desc = TextureDescription::new(data, *width, *height, *format)
             .wrap_s(match sampler.wrap_s() {
-                gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
-                gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
-                gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
             })
-            .wrap_t(match sampler.wrap_t() {
-                gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
-                gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
-                gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
+            .wrap_t(match sampler.wrap_s() {
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
             });
 
         if let Some(min_filter) = sampler.min_filter() {
-            builder = builder.min_filter(match min_filter {
-                gltf::texture::MinFilter::Nearest => MinFilter::Nearest,
-                gltf::texture::MinFilter::Linear => MinFilter::Linear,
-                gltf::texture::MinFilter::NearestMipmapNearest => MinFilter::NearestMipmapNearest,
-                gltf::texture::MinFilter::LinearMipmapNearest => MinFilter::LinearMipmapNearest,
-                gltf::texture::MinFilter::NearestMipmapLinear => MinFilter::NearestMipmapLinear,
-                gltf::texture::MinFilter::LinearMipmapLinear => MinFilter::LinearMipmapNearest,
+            desc = desc.min_filter(match min_filter {
+                gltf::texture::MinFilter::Nearest => wgpu::FilterMode::Nearest,
+                gltf::texture::MinFilter::Linear => wgpu::FilterMode::Linear,
+                _ => unimplemented!(),
             });
         }
 
         if let Some(mag_filter) = sampler.mag_filter() {
-            builder = builder.mag_filter(match mag_filter {
-                gltf::texture::MagFilter::Nearest => MagFilter::Nearest,
-                gltf::texture::MagFilter::Linear => MagFilter::Linear,
+            desc = desc.mag_filter(match mag_filter {
+                gltf::texture::MagFilter::Nearest => wgpu::FilterMode::Nearest,
+                gltf::texture::MagFilter::Linear => wgpu::FilterMode::Linear,
             });
         }
 
-        let texture = builder.build();
+        let texture = self.graphics.create_texture(&desc);
         Ok(texture)
     }
 
@@ -353,6 +312,7 @@ impl Importer {
             normal,
             diffuse,
             base_diffuse_color,
+            shaded: true,
         })
     }
 
@@ -371,33 +331,49 @@ impl Importer {
             let reader =
                 primitive.reader(|buffer| self.buffers.get(buffer.index()).map(Vec::as_slice));
 
-            let positions = reader
-                .read_positions()
-                .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
-                    "positions",
-                    mesh.index(),
-                    primitive.index(),
-                ))?
-                .collect::<Vec<_>>();
+            let mut positions =
+                reader
+                    .read_positions()
+                    .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
+                        "positions",
+                        mesh.index(),
+                        primitive.index(),
+                    ))?;
 
-            let normals = reader
-                .read_normals()
-                .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
-                    "normals",
-                    mesh.index(),
-                    primitive.index(),
-                ))?
-                .collect::<Vec<_>>();
+            let mut normals =
+                reader
+                    .read_normals()
+                    .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
+                        "normals",
+                        mesh.index(),
+                        primitive.index(),
+                    ))?;
 
-            let uvs = reader
+            let mut tex_coords = reader
                 .read_tex_coords(0)
                 .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
                     "uvs",
                     mesh.index(),
                     primitive.index(),
                 ))?
-                .into_f32()
-                .collect::<Vec<_>>();
+                .into_f32();
+
+            let mut vertices: Vec<Vertex> = Vec::with_capacity(positions.len());
+            for _ in 0..positions.len() {
+                let p = positions.next().unwrap();
+                let position = [p[0], p[1], p[2], 1.0];
+                let normal = normals.next().unwrap();
+                let tex_coord = {
+                    let val = tex_coords.next().unwrap();
+                    [val[0], val[1]]
+                };
+                let vertex = Vertex {
+                    position,
+                    normal,
+                    tex_coord,
+                };
+                vertices.push(vertex);
+            }
 
             let indices = reader
                 .read_indices()
@@ -412,70 +388,12 @@ impl Importer {
 
             let material = self.import_gltf_material(primitive.material())?;
 
-            primitives.push(Mesh::new(&positions, &normals, &uvs, &indices, &material));
+            let mesh = self.graphics.create_mesh(&vertices, &indices, &material);
+            primitives.push(mesh);
         }
 
         Ok(primitives)
     }
-
-    // fn import_gltf_skin(&mut self, skin: gltf::Skin) -> Result<Skin, ImportGltfError> {
-    //     let skin_index = skin.index();
-    //     if let Some(sk) = self.skins.get(skin_index).ok_or(ImportGltfError::UnknownSkinIndex(skin_index))? {
-    //         return Ok(sk.clone());
-    //     }
-
-    //     let mut joints = vec![];
-    //     for joint in skin.joints() {
-    //         let joint_index = join.index();
-    //         joints.push(
-    //             self.nodes
-    //                 .get(joint_index)
-    //                 .copied()
-    //                 .ok_or(ImportGltfError::UnknownNodeIndex(joint_index))?,
-    //         );
-    //     }
-
-    //     Ok(Skin { joints })
-    // }
-
-    // fn import_gltf_partial_node(
-    //     &mut self,
-    //     node: gltf::Node,
-    // ) -> Result<Id<Entity>, ImportGltfError> {
-    //     let mesh = match node.mesh() {
-    //         Some(mesh) => self.meshes.get(mesh.index()).copied(),
-    //         None => None,
-    //     };
-    //     let entity = Entity {
-    //         children: vec![],
-    //         parent: None,
-    //         skin: None,
-    //         mesh,
-    //         transform: node.transform().matrix(),
-    //     };
-    //     Ok(self.entities_catalog.add(entity))
-    // }
-
-    // // todo! prevent possible panics
-    // fn complete_gltf_node_import(&mut self, node: gltf::Node) {
-    //     for child in node.children() {
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[node.index()])
-    //             .unwrap()
-    //             .children
-    //             .push(self.nodes[child.index()]);
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[child.index()])
-    //             .unwrap()
-    //             .parent = Some(self.nodes[node.index()]);
-    //     }
-    //     if let Some(skin) = node.skin() {
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[node.index()])
-    //             .unwrap()
-    //             .skin = Some(self.skins[skin.index()]);
-    //     }
-    // }
 }
 
 fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::DecodeError> {
