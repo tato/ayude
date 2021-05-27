@@ -20,5 +20,5 @@ image = { version="0", default-features=false, features=["png", "jpeg"] }
 gltf = { version="0.16", default-features=false, features=["utils"] }
 base64 = "0.13"
 msgbox = "0"
-smallvec = { version = "1.6", features = [ "union" ] }
-rusttype = "0.9"
+smallvec = { version = "1.6", features = ["union"] }
+rusttype = { version = "0.9", features = ["gpu_cache"] }

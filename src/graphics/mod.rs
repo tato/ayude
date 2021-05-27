@@ -7,6 +7,8 @@ pub use texture::Texture;
 mod shader;
 pub use shader::{Shader, ShaderError};
 
+pub mod font;
+
 #[derive(Debug, Clone)]
 pub struct Material {
     pub normal: Option<Texture>,
