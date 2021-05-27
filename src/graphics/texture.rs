@@ -35,7 +35,8 @@ impl Drop for Texture {
     fn drop(&mut self) {
         if 1 == Rc::strong_count(&self.id) {
             unsafe {
-                gl::DeleteTextures(1, self.id.as_ref());
+                todo!();
+                // gl::DeleteTextures(1, self.id.as_ref());
             }
         }
     }
@@ -56,11 +57,12 @@ pub enum TextureWrap {
 
 impl TextureWrap {
     pub fn into_gl(self) -> u32 {
-        match self {
-            Self::ClampToEdge => gl::CLAMP_TO_EDGE,
-            Self::MirroredRepeat => gl::MIRRORED_REPEAT,
-            Self::Repeat => gl::REPEAT,
-        }
+        todo!()
+        // match self {
+        //     Self::ClampToEdge => gl::CLAMP_TO_EDGE,
+        //     Self::MirroredRepeat => gl::MIRRORED_REPEAT,
+        //     Self::Repeat => gl::REPEAT,
+        // }
     }
 }
 
@@ -76,14 +78,15 @@ pub enum MinFilter {
 
 impl MinFilter {
     pub fn into_gl(self) -> u32 {
-        match self {
-            Self::Nearest => gl::NEAREST,
-            Self::Linear => gl::LINEAR,
-            Self::NearestMipmapNearest => gl::NEAREST_MIPMAP_NEAREST,
-            Self::LinearMipmapNearest => gl::LINEAR_MIPMAP_NEAREST,
-            Self::NearestMipmapLinear => gl::NEAREST_MIPMAP_LINEAR,
-            Self::LinearMipmapLinear => gl::LINEAR_MIPMAP_LINEAR,
-        }
+        todo!()
+        // match self {
+        //     Self::Nearest => gl::NEAREST,
+        //     Self::Linear => gl::LINEAR,
+        //     Self::NearestMipmapNearest => gl::NEAREST_MIPMAP_NEAREST,
+        //     Self::LinearMipmapNearest => gl::LINEAR_MIPMAP_NEAREST,
+        //     Self::NearestMipmapLinear => gl::NEAREST_MIPMAP_LINEAR,
+        //     Self::LinearMipmapLinear => gl::LINEAR_MIPMAP_LINEAR,
+        // }
     }
 }
 
@@ -95,10 +98,11 @@ pub enum MagFilter {
 
 impl MagFilter {
     pub fn into_gl(self) -> u32 {
-        match self {
-            Self::Nearest => gl::NEAREST,
-            Self::Linear => gl::LINEAR,
-        }
+        todo!()
+        // match self {
+        //     Self::Nearest => gl::NEAREST,
+        //     Self::Linear => gl::LINEAR,
+        // }
     }
 }
 
@@ -117,48 +121,49 @@ impl<'data> TextureBuilder<'data> {
     pub fn build(self) -> Texture {
         let mut id = 0u32;
 
-        let format = match self.format {
-            TextureFormat::RGB => gl::RGB,
-            TextureFormat::RGBA => gl::RGBA,
-        };
+        todo!();
+        // let format = match self.format {
+        //     TextureFormat::RGB => gl::RGB,
+        //     TextureFormat::RGBA => gl::RGBA,
+        // };
 
-        unsafe {
-            gl::GenTextures(1, &mut id);
-            gl::BindTexture(gl::TEXTURE_2D, id);
+        // unsafe {
+        //     gl::GenTextures(1, &mut id);
+        //     gl::BindTexture(gl::TEXTURE_2D, id);
 
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_WRAP_S,
-                self.wrap_s.into_gl() as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_WRAP_T,
-                self.wrap_t.into_gl() as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_MIN_FILTER,
-                self.min_filter.into_gl() as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_MAG_FILTER,
-                self.mag_filter.into_gl() as i32,
-            );
+        //     gl::TexParameteri(
+        //         gl::TEXTURE_2D,
+        //         gl::TEXTURE_WRAP_S,
+        //         self.wrap_s.into_gl() as i32,
+        //     );
+        //     gl::TexParameteri(
+        //         gl::TEXTURE_2D,
+        //         gl::TEXTURE_WRAP_T,
+        //         self.wrap_t.into_gl() as i32,
+        //     );
+        //     gl::TexParameteri(
+        //         gl::TEXTURE_2D,
+        //         gl::TEXTURE_MIN_FILTER,
+        //         self.min_filter.into_gl() as i32,
+        //     );
+        //     gl::TexParameteri(
+        //         gl::TEXTURE_2D,
+        //         gl::TEXTURE_MAG_FILTER,
+        //         self.mag_filter.into_gl() as i32,
+        //     );
 
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                gl::COMPRESSED_RGBA as i32,
-                self.width,
-                self.height,
-                0,
-                format,
-                gl::UNSIGNED_BYTE,
-                self.data.as_ptr() as *const std::ffi::c_void,
-            );
-        }
+        //     gl::TexImage2D(
+        //         gl::TEXTURE_2D,
+        //         0,
+        //         gl::COMPRESSED_RGBA as i32,
+        //         self.width,
+        //         self.height,
+        //         0,
+        //         format,
+        //         gl::UNSIGNED_BYTE,
+        //         self.data.as_ptr() as *const std::ffi::c_void,
+        //     );
+        // }
 
         Texture { id: id.into(), width: self.width, height: self.height }
     }
