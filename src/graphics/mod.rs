@@ -23,12 +23,10 @@ pub struct GraphicsContext {
     swap_chain_descriptor: wgpu::SwapChainDescriptor,
     pub queue: wgpu::Queue, // todo! not pub
     pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
     uniform_bind_group_layout: wgpu::BindGroupLayout,
     textures_bind_group_layout: wgpu::BindGroupLayout,
     default_texture: OnceCell<Texture>,
     quad_mesh: OnceCell<Mesh>,
-    uniform_bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsContext {
@@ -121,22 +119,6 @@ impl GraphicsContext {
             flags: wgpu::ShaderFlags::all(),
         });
 
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Uniform Buffer"),
-            size: std::mem::size_of::<Uniforms>() as _,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &uniform_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-        });
-
         let vertex_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
@@ -184,12 +166,10 @@ impl GraphicsContext {
             swap_chain_descriptor,
             queue,
             pipeline: render_pipeline,
-            uniform_buffer,
             uniform_bind_group_layout,
             textures_bind_group_layout,
             default_texture: OnceCell::new(),
             quad_mesh: OnceCell::new(),
-            uniform_bind_group,
         }
     }
 
@@ -226,13 +206,13 @@ impl GraphicsContext {
             shaded: 1,
         };
         self.queue
-            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+            .write_buffer(&mesh.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
         let diffuse = diffuse.unwrap_or_else(|| self.get_default_texture());
         let normal = normal.unwrap_or_else(|| self.get_default_texture());
 
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        pass.set_bind_group(0, &mesh.bind_group, &[]);
         pass.set_bind_group(1, &diffuse.bind_group, &[]);
         pass.set_bind_group(2, &normal.bind_group, &[]);
         pass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
@@ -288,11 +268,29 @@ impl GraphicsContext {
             vertex: vertex_buffer,
             index: index_buffer,
         };
+        
+        let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Uniform Buffer"),
+            size: std::mem::size_of::<Uniforms>() as _,
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let uniform_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
 
         Mesh {
             inner: inner.into(),
             index_count: indices.len(),
             material: material.clone(),
+            uniform_buffer: uniform_buffer.into(),
+            bind_group: uniform_bind_group.into()
         }
     }
 
@@ -425,6 +423,8 @@ pub struct Mesh {
     pub inner: Rc<MeshStorage>,
     pub index_count: usize,
     pub material: Material,
+    bind_group: Rc<wgpu::BindGroup>,
+    uniform_buffer: Rc<wgpu::Buffer>,
 }
 
 #[derive(Debug, Clone)]
