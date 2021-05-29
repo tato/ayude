@@ -1,14 +1,17 @@
 struct VertexOutput {
     [[location(0)]] tex_coord: vec2<f32>;
+    [[location(1)]] normal: vec3<f32>;
+    [[location(2)]] norpos: vec3<f32>;
     [[builtin(position)]] position: vec4<f32>;
 };
 
 [[block]]
-struct Locals {
-    transform: mat4x4<f32>;
+struct Uniforms {
+    mvp: mat4x4<f32>;
+    transpose_inverse_modelview: mat3x3<f32>;
 };
 [[group(0), binding(0)]]
-var r_locals: Locals;
+var<uniform> uniforms: Uniforms;
 
 [[stage(vertex)]]
 fn vs_main(
@@ -17,8 +20,10 @@ fn vs_main(
     [[location(2)]] tex_coord: vec2<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
+    out.normal = uniforms.transpose_inverse_modelview * normal;
+    out.position = uniforms.mvp * position;
+    out.norpos = out.position.xyz / out.position.w;
     out.tex_coord = tex_coord;
-    out.position = r_locals.transform * position;
     return out;
 }
 

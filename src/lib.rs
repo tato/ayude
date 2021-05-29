@@ -55,7 +55,7 @@ impl Scene {
                 let mesh_transform = transform.mat4().clone();
                 let model = mesh_transform * base_transform;
 
-                gfx.render_mesh(mesh, model, frame, encoder);
+                gfx.render_mesh(mesh, perspective.clone(), view.clone(), model, frame, encoder);
             }
         }
     }

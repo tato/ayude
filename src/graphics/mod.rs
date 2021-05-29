@@ -71,6 +71,7 @@ pub struct GraphicsContext {
     swap_chain_descriptor: wgpu::SwapChainDescriptor,
     pub queue: wgpu::Queue, // todo! not pub
     pipeline: wgpu::RenderPipeline,
+    uniform_buffer: wgpu::Buffer,
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
@@ -156,6 +157,13 @@ impl GraphicsContext {
             flags: wgpu::ShaderFlags::all(),
         });
 
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Uniform Buffer"),
+            size: std::mem::size_of::<Uniforms>() as _,
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let vertex_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
@@ -203,6 +211,7 @@ impl GraphicsContext {
             swap_chain_descriptor,
             queue,
             pipeline: render_pipeline,
+            uniform_buffer,
             bind_group_layout,
         }
     }
@@ -218,6 +227,8 @@ impl GraphicsContext {
     pub fn render_mesh(
         &self,
         mesh: &Mesh,
+        perspective: Mat4,
+        view: Mat4,
         model: Mat4,
         frame: &wgpu::SwapChainFrame,
         encoder: &mut wgpu::CommandEncoder,
@@ -232,13 +243,12 @@ impl GraphicsContext {
         let diffuse = material.diffuse.as_ref();
         let normal = material.normal.as_ref();
 
-        let uniform_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: bytemuck::cast_slice(&model.to_cols_array()),
-                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            });
+        let uniforms = Uniforms {
+            mvp: (perspective * view * model).to_cols_array(),
+            transpose_inverse_modelview: (view * model).inverse().transpose().to_cols_array(),
+        };
+        self.queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -246,7 +256,7 @@ impl GraphicsContext {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: uniform_buf.as_entire_binding(),
+                    resource: self.uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -413,8 +423,6 @@ impl GraphicsContext {
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
         self.queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture,
@@ -479,4 +487,11 @@ pub struct Texture {
     pub texture: Rc<wgpu::Texture>,
     pub width: u32,
     pub height: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Pod, Zeroable)]
+struct Uniforms {
+    mvp: [f32; 16],
+    transpose_inverse_modelview: [f32; 16],
 }
