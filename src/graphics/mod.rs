@@ -27,9 +27,12 @@ pub struct GraphicsContext {
     textures_bind_group_layout: wgpu::BindGroupLayout,
     default_texture: OnceCell<Texture>,
     quad_mesh: OnceCell<Mesh>,
+    pub depth_view: wgpu::TextureView, // todo! not pub
 }
 
 impl GraphicsContext {
+    const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+
     pub async fn new(window: &winit::window::Window) -> Self {
         let size = window.inner_size();
 
@@ -91,16 +94,27 @@ impl GraphicsContext {
         let textures_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler {
+                            comparison: false,
+                            filtering: true,
+                        },
+                        count: None,
+                    },
+                ],
             });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -155,9 +169,17 @@ impl GraphicsContext {
                 targets: &[swapchain_format.into()],
             }),
             primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Self::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
         });
+
+        let depth_texture = Self::create_depth_texture(&&swap_chain_descriptor, &device);
 
         Self {
             surface,
@@ -170,6 +192,7 @@ impl GraphicsContext {
             textures_bind_group_layout,
             default_texture: OnceCell::new(),
             quad_mesh: OnceCell::new(),
+            depth_view: depth_texture,
         }
     }
 
@@ -179,6 +202,28 @@ impl GraphicsContext {
         self.swap_chain = self
             .device
             .create_swap_chain(&self.surface, &self.swap_chain_descriptor);
+        self.depth_view = Self::create_depth_texture(&self.swap_chain_descriptor, &self.device);
+    }
+
+    fn create_depth_texture(
+        sc_desc: &wgpu::SwapChainDescriptor,
+        device: &wgpu::Device,
+    ) -> wgpu::TextureView {
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: sc_desc.width,
+                height: sc_desc.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::DEPTH_FORMAT,
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+            label: None,
+        });
+
+        depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     pub fn render_mesh<'gfx, 'mesh, 'pass>(
@@ -220,17 +265,18 @@ impl GraphicsContext {
         pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
-    pub fn render_billboard<'gfx, 'pass>(
+    pub fn render_billboard<'gfx, 'mesh, 'pass>(
         &'gfx self,
-        texture: &Texture,
+        mesh: &'mesh Mesh,
         pass: &mut wgpu::RenderPass<'pass>,
         position: Vec3,
         perspective: Mat4,
         camera: &crate::camera::Camera,
     ) where
         'gfx: 'pass,
+        'mesh: 'pass,
     {
-        let mesh = self.get_quad_mesh();
+        let texture = mesh.material.diffuse.as_ref().unwrap();
 
         let w = texture.width as f32;
         let h = texture.height as f32;
@@ -244,7 +290,7 @@ impl GraphicsContext {
         };
         let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
 
-        self.render_mesh(mesh, perspective, camera.view(), model, pass);
+        self.render_mesh(&mesh, perspective, camera.view(), model, pass);
     }
 
     pub fn create_mesh(&self, vertices: &[Vertex], indices: &[u16], material: &Material) -> Mesh {
@@ -331,15 +377,30 @@ impl GraphicsContext {
             texture_extent,
         );
 
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.textures_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
         });
 
         Texture {
@@ -364,7 +425,7 @@ impl GraphicsContext {
         frame
     }
 
-    fn get_quad_mesh(&self) -> &Mesh {
+    pub fn get_quad_mesh(&self) -> &Mesh {
         self.quad_mesh.get_or_init(|| {
             macro_rules! v {
                 ($pos:expr, $norm:expr, $uv:expr) => {

@@ -394,7 +394,7 @@ impl<'gfx> Importer<'gfx> {
                 let normal = normals.next().unwrap();
                 let tex_coord = { 
                     let val = tex_coords.next().unwrap();
-                    [val[0], 1.0 - val[1]]
+                    [val[0], val[1]]
                 };
                 let vertex = Vertex { position, normal, tex_coord };
                 vertices.push(vertex);

@@ -1,14 +1,7 @@
-use ayude::{
-    camera::Camera,
-    graphics::{self, GraphicsContext, Material, Mesh},
-    import_gltf,
-    transform::{Transform, GLOBAL_UP},
-    Scene,
-};
+use ayude::{Scene, camera::Camera, graphics::{self, GraphicsContext}, import_gltf, transform::Transform};
 use glam::{Mat4, Vec2, Vec3};
 use rusttype::{Font, Scale};
 use std::{
-    borrow::Cow,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -149,6 +142,9 @@ impl World {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
+        let mut billboard = self.graphics.get_quad_mesh().clone();
+        billboard.material.diffuse = Some(self.ricardo.clone());
+
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
@@ -165,7 +161,14 @@ impl World {
                         store: true,
                     },
                 }],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.graphics.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: false,
+                    }),
+                    stencil_ops: None,
+                }),
             });
 
             if !self.rendering_skin {
@@ -173,49 +176,48 @@ impl World {
                     .render(&self.graphics, perspective, view, &mut pass);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
                 self.graphics.render_billboard(
-                    &self.ricardo,
+                    &billboard,
                     &mut pass,
                     translation,
                     perspective,
                     &self.camera,
                 );
             } else {
-                // let scene = &self.the_scene;
-                // for node in &scene.nodes {
-                //     let skin = match node.skin.as_ref() {
-                //         Some(skin) => skin,
-                //         None => continue,
-                //     };
+                let scene = &self.the_scene;
+                for node in &scene.nodes {
+                    let skin = match node.skin.as_ref() {
+                        Some(skin) => skin,
+                        None => continue,
+                    };
 
-                //     let skeleton_transform = match skin.skeleton {
-                //         Some(skeleton) => Transform::from(
-                //             scene.nodes[usize::from(skeleton)].transform.mat4().clone(),
-                //         ),
-                //         None => scene.transform.clone(),
-                //     };
+                    let skeleton_transform = match skin.skeleton {
+                        Some(skeleton) => Transform::from(
+                            scene.nodes[usize::from(skeleton)].transform.mat4().clone(),
+                        ),
+                        None => scene.transform.clone(),
+                    };
 
-                //     for &joint in &skin.joints {
-                //         let joint = &scene.nodes[usize::from(joint)];
+                    for &joint in &skin.joints {
+                        let joint = &scene.nodes[usize::from(joint)];
 
-                //         let mut transform = joint.transform.mat4().clone();
-                //         let mut current = joint;
-                //         'transform: loop {
-                //             match current.parent {
-                //                 Some(index) => current = &scene.nodes[usize::from(index)],
-                //                 None => break 'transform,
-                //             }
-                //             transform = transform.mul_mat4(current.transform.mat4());
-                //         }
+                        let mut transform = joint.transform.mat4().clone();
+                        let mut current = joint;
+                        'transform: loop {
+                            match current.parent {
+                                Some(index) => current = &scene.nodes[usize::from(index)],
+                                None => break 'transform,
+                            }
+                            transform = transform * current.transform.mat4();
+                        }
 
-                //         self.the_sphere.transform = Transform::from(
-                //             transform.mul_mat4(skeleton_transform.mat4())
-                //                 * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
-                //         );
+                        self.the_sphere.transform = Transform::from(
+                            transform * skeleton_transform.mat4()
+                                * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
+                        );
 
-                //         self.renderer
-                //             .render_scene(&self.the_sphere, &frame, &perspective, &view);
-                //     }
-                // }
+                        // todo! self.the_sphere.render(&self.graphics, perspective, view, &mut pass);
+                    }
+                }
             };
         }
         self.graphics.queue.submit(Some(encoder.finish()));
