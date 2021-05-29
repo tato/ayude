@@ -124,7 +124,7 @@ impl GraphicsContext {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
+                    visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -134,6 +134,16 @@ impl GraphicsContext {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
@@ -246,6 +256,11 @@ impl GraphicsContext {
         let uniforms = Uniforms {
             mvp: (perspective * view * model).to_cols_array(),
             transpose_inverse_modelview: (view * model).inverse().transpose().to_cols_array(),
+            light_direction: [-1.0, 0.4, 0.9f32],
+            has_diffuse_texture: if diffuse.is_some() { 1 } else { 0 },
+            has_normal_texture: if normal.is_some() { 1 } else { 0 },
+            base_diffuse_color: material.base_diffuse_color,
+            shaded: 1,
         };
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
@@ -267,29 +282,17 @@ impl GraphicsContext {
                             .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(
+                        &diffuse // todo! wrong
+                            .unwrap()
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
             ],
         });
-
-        // self.shader
-        //     .uniform("perspective", perspective.to_cols_array_2d());
-        // self.shader.uniform("view", view.to_cols_array_2d());
-        // self.shader.uniform("model", model);
-        // self.shader.uniform(
-        //     "diffuse_texture",
-        //     diffuse.cloned().unwrap_or(graphics::Texture::empty()),
-        // );
-        // self.shader.uniform(
-        //     "normal_texture",
-        //     normal.cloned().unwrap_or(graphics::Texture::empty()),
-        // );
-        // self.shader
-        //     .uniform("has_diffuse_texture", diffuse.is_some());
-        // self.shader.uniform("has_normal_texture", normal.is_some());
-        // self.shader
-        //     .uniform("base_diffuse_color", material.base_diffuse_color);
-        // self.shader
-        //     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
-        // self.shader.uniform("shaded", true);
 
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
@@ -494,4 +497,9 @@ pub struct Texture {
 struct Uniforms {
     mvp: [f32; 16],
     transpose_inverse_modelview: [f32; 16],
+    light_direction: [f32; 3],
+    has_diffuse_texture: u32,
+    has_normal_texture: u32,
+    base_diffuse_color: [f32; 4],
+    shaded: u32,
 }
