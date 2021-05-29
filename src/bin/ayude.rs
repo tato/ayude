@@ -150,17 +150,35 @@ impl World {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[wgpu::RenderPassColorAttachment {
+                    view: &frame.output.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: true,
+                    },
+                }],
+                depth_stencil_attachment: None,
+            });
 
             if !self.rendering_skin {
-                self.the_scene.render(&self.graphics, &perspective, &view, &frame, &mut encoder);
+                self.the_scene
+                    .render(&self.graphics, perspective, view, &mut pass);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
-                // self.renderer.render_billboard(
-                //     &self.ricardo,
-                //     &frame,
-                //     translation,
-                //     &perspective,
-                //     &self.camera,
-                // );
+                self.graphics.render_billboard(
+                    &self.ricardo,
+                    &mut pass,
+                    translation,
+                    perspective,
+                    &self.camera,
+                );
             } else {
                 // let scene = &self.the_scene;
                 // for node in &scene.nodes {

@@ -81,6 +81,7 @@ dependencies = [
  "gltf",
  "image",
  "msgbox",
+ "once_cell",
  "pollster",
  "rusttype",
  "smallvec",

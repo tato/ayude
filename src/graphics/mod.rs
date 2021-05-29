@@ -2,66 +2,18 @@ use std::{borrow::Cow, rc::Rc};
 
 use glam::{Mat4, Vec3};
 
+use once_cell::sync::OnceCell;
 use wgpu::util::DeviceExt;
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::transform::Transform;
+use crate::transform::GLOBAL_UP;
 
 #[derive(Debug, Clone)]
 pub struct Material {
     pub normal: Option<Texture>,
     pub diffuse: Option<Texture>,
     pub base_diffuse_color: [f32; 4],
-}
-
-pub struct Frame {
-    viewport: (i32, i32, i32, i32),
-}
-
-impl Frame {
-    pub fn start(clear_color: [f32; 3], window_dimensions: (i32, i32)) -> Frame {
-        unsafe {
-            // gl::ClearColor(clear_color[0], clear_color[1], clear_color[2], 1.0);
-            // gl::ClearDepth(1.0);
-            // gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-        }
-        Frame {
-            viewport: (0, 0, window_dimensions.0, window_dimensions.1),
-        }
-    }
-
-    pub fn render(&self, primitive: &Mesh) {
-        unsafe {
-            todo!()
-            // // gl::Enable(gl::BLEND);
-            // // gl::BlendEquation(gl::FUNC_ADD);
-            // // gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-
-            // gl::Enable(gl::DEPTH_TEST);
-            // gl::DepthFunc(gl::LEQUAL);
-            // gl::Disable(gl::CULL_FACE); // CullClockwise
-
-            // gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            // gl::Viewport(
-            //     self.viewport.0,
-            //     self.viewport.1,
-            //     self.viewport.2,
-            //     self.viewport.3,
-            // );
-
-            // shader.bind();
-
-            // let vao: &u32 = &primitive.vao;
-            // gl::BindVertexArray(*vao);
-            // gl::DrawElements(
-            //     gl::TRIANGLES,
-            //     primitive.element_count,
-            //     gl::UNSIGNED_SHORT,
-            //     std::ptr::null(),
-            // );
-        }
-    }
 }
 
 pub struct GraphicsContext {
@@ -72,7 +24,11 @@ pub struct GraphicsContext {
     pub queue: wgpu::Queue, // todo! not pub
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
-    bind_group_layout: wgpu::BindGroupLayout,
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
+    textures_bind_group_layout: wgpu::BindGroupLayout,
+    default_texture: OnceCell<Texture>,
+    quad_mesh: OnceCell<Mesh>,
+    uniform_bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsContext {
@@ -119,10 +75,10 @@ impl GraphicsContext {
 
         let swap_chain = device.create_swap_chain(&surface, &swap_chain_descriptor);
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
@@ -131,9 +87,14 @@ impl GraphicsContext {
                         min_binding_size: None,
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                }],
+            });
+
+        let textures_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
@@ -141,23 +102,16 @@ impl GraphicsContext {
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-            ],
-        });
+                }],
+            });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[
+                &uniform_bind_group_layout,
+                &textures_bind_group_layout,
+                &textures_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -172,6 +126,15 @@ impl GraphicsContext {
             size: std::mem::size_of::<Uniforms>() as _,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
             mapped_at_creation: false,
+        });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         let vertex_buffers = [wgpu::VertexBufferLayout {
@@ -222,7 +185,11 @@ impl GraphicsContext {
             queue,
             pipeline: render_pipeline,
             uniform_buffer,
-            bind_group_layout,
+            uniform_bind_group_layout,
+            textures_bind_group_layout,
+            default_texture: OnceCell::new(),
+            quad_mesh: OnceCell::new(),
+            uniform_bind_group,
         }
     }
 
@@ -234,21 +201,17 @@ impl GraphicsContext {
             .create_swap_chain(&self.surface, &self.swap_chain_descriptor);
     }
 
-    pub fn render_mesh(
-        &self,
-        mesh: &Mesh,
+    pub fn render_mesh<'gfx, 'mesh, 'pass>(
+        &'gfx self,
+        mesh: &'mesh Mesh,
         perspective: Mat4,
         view: Mat4,
         model: Mat4,
-        frame: &wgpu::SwapChainFrame,
-        encoder: &mut wgpu::CommandEncoder,
-    ) {
-        // scene: &'gfx crate::Scene,
-        // frame: &wgpu::SwapChainFrame,
-        // perspective: &Mat4,
-        // view: &Mat4,
-        // rpass: &mut wgpu::RenderPass<'gfx>,
-
+        pass: &mut wgpu::RenderPass<'pass>,
+    ) where
+        'mesh: 'pass,
+        'gfx: 'pass,
+    {
         let material = &mesh.material;
         let diffuse = material.diffuse.as_ref();
         let normal = material.normal.as_ref();
@@ -265,113 +228,43 @@ impl GraphicsContext {
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &diffuse
-                            .unwrap()
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(
-                        &diffuse // todo! wrong
-                            .unwrap()
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-            ],
-        });
+        let diffuse = diffuse.unwrap_or_else(|| self.get_default_texture());
+        let normal = normal.unwrap_or_else(|| self.get_default_texture());
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[wgpu::RenderPassColorAttachment {
-                view: &frame.output.view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: true,
-                },
-            }],
-            depth_stencil_attachment: None,
-        });
-
-        rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, &bind_group, &[]);
-        rpass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
-        rpass.set_vertex_buffer(0, mesh.inner.vertex.slice(..));
-        rpass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        pass.set_bind_group(1, &diffuse.bind_group, &[]);
+        pass.set_bind_group(2, &normal.bind_group, &[]);
+        pass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_vertex_buffer(0, mesh.inner.vertex.slice(..));
+        pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
-    pub fn render_billboard(
-        &mut self,
+    pub fn render_billboard<'gfx, 'pass>(
+        &'gfx self,
         texture: &Texture,
-        frame: &wgpu::SwapChainFrame,
+        pass: &mut wgpu::RenderPass<'pass>,
         position: Vec3,
-        perspective: &Mat4,
+        perspective: Mat4,
         camera: &crate::camera::Camera,
-    ) {
-        todo!()
-        // let positions = [
-        //     [-1.0, -1.0, 0.0],
-        //     [1.0, -1.0, 0.0],
-        //     [-1.0, 1.0, 0.0],
-        //     [1.0, 1.0, 0.0],
-        // ];
-        // let normals = [
-        //     [1.0, 0.0, 0.0],
-        //     [1.0, 0.0, 0.0],
-        //     [1.0, 0.0, 0.0],
-        //     [1.0, 0.0, 0.0],
-        // ];
-        // let uvs = [[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
-        // let indices = [0, 1, 2, 3, 2, 1];
-        // let material = Material {
-        //     base_diffuse_color: [1.0, 1.0, 1.0, 1.0],
-        //     diffuse: None,
-        //     normal: None,
-        // };
-        // let mesh = Mesh::new(&positions, &normals, &uvs, &indices, &material);
+    ) where
+        'gfx: 'pass,
+    {
+        let mesh = self.get_quad_mesh();
 
-        // let w = texture.width() as f32;
-        // let h = texture.height() as f32;
-        // let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
-        // let rotation = {
-        //     let fwd = camera.transform().position() - position;
-        //     let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
-        //     let yaw = f32::atan2(fwd.z, fwd.x);
-        //     let pitch = f32::asin(fwd.y);
-        //     Mat4::from_euler(glam::EulerRot::YXZ, -yaw, pitch, 0.0)
-        // };
-        // let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
+        let w = texture.width as f32;
+        let h = texture.height as f32;
+        let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
+        let rotation = {
+            let fwd = camera.transform().position() - position;
+            let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
+            let yaw = f32::atan2(fwd.z, fwd.x);
+            let pitch = f32::asin(fwd.y);
+            Mat4::from_euler(glam::EulerRot::YXZ, -yaw, pitch, 0.0)
+        };
+        let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
 
-        // self.shader
-        //     .uniform("perspective", perspective.to_cols_array_2d());
-        // self.shader
-        //     .uniform("view", camera.view().to_cols_array_2d());
-        // self.shader.uniform("model", model.to_cols_array_2d());
-        // self.shader.uniform("diffuse_texture", texture.clone());
-        // self.shader.uniform("has_diffuse_texture", true);
-        // self.shader.uniform("has_normal_texture", false);
-        // self.shader.uniform("shaded", false);
-
-        // frame.render(&mesh, &self.shader);
+        self.render_mesh(mesh, perspective, camera.view(), model, pass);
     }
 
     pub fn create_mesh(&self, vertices: &[Vertex], indices: &[u16], material: &Material) -> Mesh {
@@ -441,10 +334,22 @@ impl GraphicsContext {
             texture_extent,
         );
 
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.textures_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+
         Texture {
             texture: texture.into(),
             width,
             height,
+            bind_group: bind_group.into(),
         }
     }
 
@@ -461,6 +366,43 @@ impl GraphicsContext {
             }
         };
         frame
+    }
+
+    fn get_quad_mesh(&self) -> &Mesh {
+        self.quad_mesh.get_or_init(|| {
+            macro_rules! v {
+                ($pos:expr, $norm:expr, $uv:expr) => {
+                    Vertex {
+                        position: $pos,
+                        normal: $norm,
+                        tex_coord: $uv,
+                    }
+                };
+            }
+            let vertices = [
+                v!([-1.0, -1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0]),
+                v!([1.0, -1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0]),
+                v!([-1.0, 1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0]),
+                v!([1.0, 1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
+            ];
+            let indices = [0, 1, 2, 3, 2, 1];
+            let material = Material {
+                base_diffuse_color: [1.0, 1.0, 1.0, 1.0],
+                diffuse: None,
+                normal: None,
+            };
+            let mesh = self.create_mesh(&vertices, &indices, &material);
+            mesh
+        })
+    }
+
+    fn get_default_texture(&self) -> &Texture {
+        self.default_texture.get_or_init(|| {
+            let pixels = [
+                255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255u8,
+            ];
+            self.create_texture(&pixels, 2, 2, wgpu::TextureFormat::Rgba8Uint)
+        })
     }
 }
 
@@ -490,6 +432,7 @@ pub struct Texture {
     pub texture: Rc<wgpu::Texture>,
     pub width: u32,
     pub height: u32,
+    pub bind_group: Rc<wgpu::BindGroup>,
 }
 
 #[repr(C)]

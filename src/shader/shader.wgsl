@@ -47,12 +47,11 @@ fn cotangent_frame(normal: vec3<f32>, pos: vec3<f32>, uv: vec2<f32>) -> mat3x3<f
     return mat3x3<f32>(T * invmax, B * invmax, normal);
 }
 
-[[group(0), binding(1)]]
+[[group(1), binding(0)]]
 var diffuse_texture: texture_2d<u32>;
-[[group(0), binding(2)]]
+
+[[group(2), binding(0)]]
 var normal_texture: texture_2d<u32>;
-
-
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {

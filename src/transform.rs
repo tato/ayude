@@ -14,8 +14,8 @@ impl From<Mat4> for Transform {
 }
 
 impl Transform {
-    pub fn mat4(&self) -> &Mat4 {
-        &self.0
+    pub fn mat4(&self) -> Mat4 {
+        self.0
     }
 
     pub fn position(&self) -> Vec3 {

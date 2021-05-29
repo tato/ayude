@@ -22,14 +22,16 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn render(
-        &self,
-        gfx: &GraphicsContext,
-        perspective: &Mat4,
-        view: &Mat4,
-        frame: &wgpu::SwapChainFrame,
-        encoder: &mut wgpu::CommandEncoder,
-    ) {
+    pub fn render<'gfx, 'scene, 'pass>(
+        &'scene self,
+        gfx: &'gfx GraphicsContext,
+        perspective: Mat4,
+        view: Mat4,
+        pass: &mut wgpu::RenderPass<'pass>,
+    ) where
+        'gfx: 'pass,
+        'scene: 'pass,
+    {
         let base_transform = &self.transform;
         for node in &self.nodes {
             if node.meshes.is_empty() {
@@ -45,17 +47,17 @@ impl Scene {
                         None => break 'transform,
                     };
 
-                    transform = transform.mul_mat4(current.transform.mat4());
+                    transform = transform * current.transform.mat4();
                 }
                 Transform::from(transform)
             };
 
             for mesh in &node.meshes {
-                let base_transform = base_transform.mat4().clone();
-                let mesh_transform = transform.mat4().clone();
+                let base_transform = base_transform.mat4();
+                let mesh_transform = transform.mat4();
                 let model = mesh_transform * base_transform;
 
-                gfx.render_mesh(mesh, perspective.clone(), view.clone(), model, frame, encoder);
+                gfx.render_mesh(mesh, perspective, view, model, pass);
             }
         }
     }
