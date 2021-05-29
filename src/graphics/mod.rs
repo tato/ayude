@@ -206,17 +206,17 @@ impl GraphicsContext {
             shaded: 1,
         };
         self.queue
-            .write_buffer(&mesh.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+            .write_buffer(&mesh.uniform_buffer(), 0, bytemuck::cast_slice(&[uniforms]));
 
         let diffuse = diffuse.unwrap_or_else(|| self.get_default_texture());
         let normal = normal.unwrap_or_else(|| self.get_default_texture());
 
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &mesh.bind_group, &[]);
-        pass.set_bind_group(1, &diffuse.bind_group, &[]);
-        pass.set_bind_group(2, &normal.bind_group, &[]);
-        pass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
-        pass.set_vertex_buffer(0, mesh.inner.vertex.slice(..));
+        pass.set_bind_group(0, &mesh.uniform_bind_group(), &[]);
+        pass.set_bind_group(1, diffuse.bind_group(), &[]);
+        pass.set_bind_group(2, normal.bind_group(), &[]);
+        pass.set_index_buffer(mesh.index().slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_vertex_buffer(0, mesh.vertex().slice(..));
         pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
@@ -264,11 +264,6 @@ impl GraphicsContext {
                 usage: wgpu::BufferUsage::INDEX,
             });
 
-        let inner = MeshStorage {
-            vertex: vertex_buffer,
-            index: index_buffer,
-        };
-        
         let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Uniform Buffer"),
             size: std::mem::size_of::<Uniforms>() as _,
@@ -286,11 +281,9 @@ impl GraphicsContext {
         });
 
         Mesh {
-            inner: inner.into(),
+            inner: (vertex_buffer, index_buffer, uniform_bind_group, uniform_buffer).into(),
             index_count: indices.len(),
             material: material.clone(),
-            uniform_buffer: uniform_buffer.into(),
-            bind_group: uniform_bind_group.into()
         }
     }
 
@@ -344,10 +337,9 @@ impl GraphicsContext {
         });
 
         Texture {
-            texture: texture.into(),
+            bind_group: bind_group.into(),
             width,
             height,
-            bind_group: bind_group.into(),
         }
     }
 
@@ -412,27 +404,45 @@ pub struct Vertex {
     pub tex_coord: [f32; 2],
 }
 
-#[derive(Debug)]
-pub struct MeshStorage {
-    pub vertex: wgpu::Buffer,
-    pub index: wgpu::Buffer,
-}
 
 #[derive(Debug, Clone)]
 pub struct Mesh {
-    pub inner: Rc<MeshStorage>,
+    /// vertex_buffer, index_buffer, uniform_bind_group, uniform_buffer
+    inner: Rc<(wgpu::Buffer, wgpu::Buffer, wgpu::BindGroup, wgpu::Buffer)>,
     pub index_count: usize,
     pub material: Material,
-    bind_group: Rc<wgpu::BindGroup>,
-    uniform_buffer: Rc<wgpu::Buffer>,
+}
+
+impl Mesh {
+    pub fn vertex(&self) -> &wgpu::Buffer {
+        let (vertex, _, _, _) = self.inner.as_ref();
+        vertex
+    }
+    pub fn index(&self) -> &wgpu::Buffer {
+        let (_, index, _, _) = self.inner.as_ref();
+        index
+    }
+    pub fn uniform_bind_group(&self) -> &wgpu::BindGroup {
+        let (_, _, ubg, _) = self.inner.as_ref();
+        ubg
+    }
+    pub fn uniform_buffer(&self) -> &wgpu::Buffer {
+        let (_, _, _, buf) = self.inner.as_ref();
+        buf
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Texture {
-    pub texture: Rc<wgpu::Texture>,
+    bind_group: Rc<wgpu::BindGroup>,
     pub width: u32,
     pub height: u32,
-    pub bind_group: Rc<wgpu::BindGroup>,
+}
+
+impl Texture {
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
 }
 
 #[repr(C)]
