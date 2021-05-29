@@ -96,7 +96,7 @@ impl GraphicsContext {
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Uint,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
@@ -281,7 +281,13 @@ impl GraphicsContext {
         });
 
         Mesh {
-            inner: (vertex_buffer, index_buffer, uniform_bind_group, uniform_buffer).into(),
+            inner: (
+                vertex_buffer,
+                index_buffer,
+                uniform_bind_group,
+                uniform_buffer,
+            )
+                .into(),
             index_count: indices.len(),
             material: material.clone(),
         }
@@ -391,7 +397,7 @@ impl GraphicsContext {
             let pixels = [
                 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255u8,
             ];
-            self.create_texture(&pixels, 2, 2, wgpu::TextureFormat::Rgba8Uint)
+            self.create_texture(&pixels, 2, 2, wgpu::TextureFormat::Rgba8Unorm)
         })
     }
 }
@@ -403,7 +409,6 @@ pub struct Vertex {
     pub normal: [f32; 3],
     pub tex_coord: [f32; 2],
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Mesh {

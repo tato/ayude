@@ -246,7 +246,7 @@ impl<'gfx> Importer<'gfx> {
                 rgba.as_bytes().to_owned(),
                 rgba.width(),
                 rgba.height(),
-                wgpu::TextureFormat::Rgba8Uint,
+                wgpu::TextureFormat::Rgba8Unorm,
             )),
             _ => {
                 let rgba = image.into_rgba8();
@@ -254,7 +254,7 @@ impl<'gfx> Importer<'gfx> {
                     rgba.as_bytes().to_owned(),
                     rgba.width(),
                     rgba.height(),
-                    wgpu::TextureFormat::Rgba8Uint,
+                    wgpu::TextureFormat::Rgba8Unorm,
                 ))
             }
         }
@@ -392,7 +392,10 @@ impl<'gfx> Importer<'gfx> {
                 let p = positions.next().unwrap();
                 let position = [ p[0], p[1], p[2], 1.0];
                 let normal = normals.next().unwrap();
-                let tex_coord = tex_coords.next().unwrap();
+                let tex_coord = { 
+                    let val = tex_coords.next().unwrap();
+                    [val[0], 1.0 - val[1]]
+                };
                 let vertex = Vertex { position, normal, tex_coord };
                 vertices.push(vertex);
             }

@@ -48,18 +48,17 @@ fn cotangent_frame(normal: vec3<f32>, pos: vec3<f32>, uv: vec2<f32>) -> mat3x3<f
 }
 
 [[group(1), binding(0)]]
-var diffuse_texture: texture_2d<u32>;
+var diffuse_texture: texture_2d<f32>;
 
 [[group(2), binding(0)]]
-var normal_texture: texture_2d<u32>;
+var normal_texture: texture_2d<f32>;
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     if (uniforms.shaded == u32(0)) {
         var diffuse_color: vec3<f32>;
         if (uniforms.has_diffuse_texture > u32(0)) {
-            let i_diffuse_color = textureLoad(diffuse_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
-            diffuse_color = vec3<f32>(i_diffuse_color) / 256.0;
+            diffuse_color = textureLoad(diffuse_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
         } else {
             diffuse_color = uniforms.base_diffuse_color.rgb;
         }
@@ -68,8 +67,7 @@ fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     
     var real_normal: vec3<f32>;
     if (uniforms.has_normal_texture > u32(0)) {
-        let i_real_normal = textureLoad(normal_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
-        real_normal = vec3<f32>(i_real_normal) / 256.0;
+        real_normal = textureLoad(normal_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
     } else {
         real_normal = in.normal;
     }
@@ -83,8 +81,7 @@ fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
 
     var diffuse_color: vec3<f32>;
     if (uniforms.has_diffuse_texture > u32(0)) {
-        let i_diffuse_color = textureLoad(diffuse_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
-        diffuse_color = vec3<f32>(i_diffuse_color) / 256.0;
+        diffuse_color = textureLoad(diffuse_texture, vec2<i32>(in.tex_coord * 256.0), 0).rgb;
     } else {
         diffuse_color = uniforms.base_diffuse_color.rgb;
     }

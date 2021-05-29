@@ -105,7 +105,7 @@ impl World {
                 &pixel_data,
                 width as u32,
                 pixel_height as u32,
-                wgpu::TextureFormat::Rgba8Uint,
+                wgpu::TextureFormat::Rgba8Unorm,
             )
         };
 
