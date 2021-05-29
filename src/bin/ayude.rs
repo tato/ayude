@@ -31,7 +31,7 @@ pub struct World {
 
     rendering_skin: bool,
 
-    renderer: GraphicsContext,
+    graphics: GraphicsContext,
 }
 
 impl World {
@@ -121,7 +121,7 @@ impl World {
 
             rendering_skin: false,
 
-            renderer,
+            graphics: renderer,
         };
 
         world
@@ -133,7 +133,7 @@ impl World {
     }
 
     fn render(&mut self, window_dimensions: (i32, i32)) {
-        let frame = self.renderer.get_current_frame();
+        let frame = self.graphics.get_current_frame();
 
         let perspective = glam::Mat4::perspective_rh_gl(
             std::f32::consts::PI / 3.0,
@@ -145,16 +145,14 @@ impl World {
         let view = self.camera.view();
 
         let mut encoder = self
-            .renderer
+            .graphics
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
-            let mut rpass = self.renderer.begin_render_pass(&frame, &mut encoder);
 
             if !self.rendering_skin {
-                self.renderer
-                    .render_scene(&self.the_scene, &frame, &perspective, &view, &mut rpass);
+                self.the_scene.render(&self.graphics, &perspective, &view, &frame, &mut encoder);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
                 // self.renderer.render_billboard(
                 //     &self.ricardo,
@@ -202,7 +200,7 @@ impl World {
                 // }
             };
         }
-        self.renderer.queue.submit(Some(encoder.finish()));
+        self.graphics.queue.submit(Some(encoder.finish()));
     }
 }
 
@@ -237,7 +235,7 @@ async fn async_main(event_loop: EventLoop<()>, window: Arc<Window>) {
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::Resized(size) => {
-                    game.renderer.resize(size.width, size.height);
+                    game.graphics.resize(size.width, size.height);
                 }
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
@@ -293,8 +291,6 @@ async fn async_main(event_loop: EventLoop<()>, window: Arc<Window>) {
             }
             Event::RedrawRequested(..) => {
                 game.render(get_window_dimensions(&window));
-                todo!();
-                // window.swap_buffers().unwrap();
             }
             _ => return,
         }

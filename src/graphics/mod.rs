@@ -71,6 +71,7 @@ pub struct GraphicsContext {
     swap_chain_descriptor: wgpu::SwapChainDescriptor,
     pub queue: wgpu::Queue, // todo! not pub
     pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl GraphicsContext {
@@ -149,30 +150,6 @@ impl GraphicsContext {
             push_constant_ranges: &[],
         });
 
-        // let mx_ref: &[f32; 16] = &[
-        //     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
-        // ];
-        // let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Uniform Buffer"),
-        //     contents: bytemuck::cast_slice(mx_ref),
-        //     usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        // });
-        //
-        // let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &bind_group_layout,
-        //     entries: &[
-        //         wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: uniform_buf.as_entire_binding(),
-        //         },
-        //         wgpu::BindGroupEntry {
-        //             binding: 1,
-        //             resource: wgpu::BindingResource::TextureView(&texture_view),
-        //         },
-        //     ],
-        //     label: None,
-        // });
-
         let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("../shader/shader.wgsl"))),
@@ -226,6 +203,7 @@ impl GraphicsContext {
             swap_chain_descriptor,
             queue,
             pipeline: render_pipeline,
+            bind_group_layout,
         }
     }
 
@@ -237,73 +215,95 @@ impl GraphicsContext {
             .create_swap_chain(&self.surface, &self.swap_chain_descriptor);
     }
 
-    pub fn render_scene<'gfx>(
-        &'gfx self,
-        scene: &'gfx crate::Scene,
+    pub fn render_mesh(
+        &self,
+        mesh: &Mesh,
+        model: Mat4,
         frame: &wgpu::SwapChainFrame,
-        perspective: &Mat4,
-        view: &Mat4,
-        rpass: &mut wgpu::RenderPass<'gfx>
+        encoder: &mut wgpu::CommandEncoder,
     ) {
-        let base_transform = &scene.transform;
-        for node in &scene.nodes {
-            if node.meshes.is_empty() {
-                continue;
-            }
+        // scene: &'gfx crate::Scene,
+        // frame: &wgpu::SwapChainFrame,
+        // perspective: &Mat4,
+        // view: &Mat4,
+        // rpass: &mut wgpu::RenderPass<'gfx>,
 
-            let transform = {
-                let mut current = node;
-                let mut transform = node.transform.mat4().clone();
-                'transform: loop {
-                    current = match current.parent {
-                        Some(index) => &scene.nodes[usize::from(index)],
-                        None => break 'transform,
-                    };
+        let material = &mesh.material;
+        let diffuse = material.diffuse.as_ref();
+        let normal = material.normal.as_ref();
 
-                    transform = transform.mul_mat4(current.transform.mat4());
-                }
-                Transform::from(transform)
-            };
+        let uniform_buf = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::cast_slice(&model.to_cols_array()),
+                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            });
 
-            for mesh in &node.meshes {
-                let material = &mesh.material;
-                let diffuse = material.diffuse.as_ref();
-                let normal = material.normal.as_ref();
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(
+                        &diffuse
+                            .unwrap()
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+            ],
+        });
 
-                let base_transform = base_transform.mat4().clone();
-                let mesh_transform = transform.mat4().clone();
-                let model = (mesh_transform * base_transform).to_cols_array_2d();
+        // self.shader
+        //     .uniform("perspective", perspective.to_cols_array_2d());
+        // self.shader.uniform("view", view.to_cols_array_2d());
+        // self.shader.uniform("model", model);
+        // self.shader.uniform(
+        //     "diffuse_texture",
+        //     diffuse.cloned().unwrap_or(graphics::Texture::empty()),
+        // );
+        // self.shader.uniform(
+        //     "normal_texture",
+        //     normal.cloned().unwrap_or(graphics::Texture::empty()),
+        // );
+        // self.shader
+        //     .uniform("has_diffuse_texture", diffuse.is_some());
+        // self.shader.uniform("has_normal_texture", normal.is_some());
+        // self.shader
+        //     .uniform("base_diffuse_color", material.base_diffuse_color);
+        // self.shader
+        //     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
+        // self.shader.uniform("shaded", true);
 
-                // self.shader
-                //     .uniform("perspective", perspective.to_cols_array_2d());
-                // self.shader.uniform("view", view.to_cols_array_2d());
-                // self.shader.uniform("model", model);
-                // self.shader.uniform(
-                //     "diffuse_texture",
-                //     diffuse.cloned().unwrap_or(graphics::Texture::empty()),
-                // );
-                // self.shader.uniform(
-                //     "normal_texture",
-                //     normal.cloned().unwrap_or(graphics::Texture::empty()),
-                // );
-                // self.shader
-                //     .uniform("has_diffuse_texture", diffuse.is_some());
-                // self.shader.uniform("has_normal_texture", normal.is_some());
-                // self.shader
-                //     .uniform("base_diffuse_color", material.base_diffuse_color);
-                // self.shader
-                //     .uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
-                // self.shader.uniform("shaded", true);
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view: &frame.output.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: None,
+        });
 
-                rpass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
-                rpass.set_vertex_buffer(0, mesh.inner.vertex.slice(..));
-                rpass.pop_debug_group();
-                rpass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
-                
-
-                // frame.render(mesh, &self.shader);
-            }
-        }
+        rpass.set_pipeline(&self.pipeline);
+        rpass.set_bind_group(0, &bind_group, &[]);
+        rpass.set_index_buffer(mesh.inner.index.slice(..), wgpu::IndexFormat::Uint16);
+        rpass.set_vertex_buffer(0, mesh.inner.vertex.slice(..));
+        rpass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
     pub fn render_billboard(
@@ -450,32 +450,6 @@ impl GraphicsContext {
             }
         };
         frame
-    }
-
-    pub fn begin_render_pass<'gfx>(&'gfx self, frame: &'gfx wgpu::SwapChainFrame, encoder: &'gfx mut wgpu::CommandEncoder) -> wgpu::RenderPass<'gfx> {
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[wgpu::RenderPassColorAttachment {
-                view: &frame.output.view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: true,
-                },
-            }],
-            depth_stencil_attachment: None,
-        });
-
-        rpass.push_debug_group("Prepare data for draw...");
-        rpass.set_pipeline(&self.pipeline);
-        // todo! rpass.set_bind_group(0, &self.bind_group, &[]);
-
-        rpass
     }
 }
 
