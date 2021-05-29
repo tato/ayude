@@ -1,46 +1,5 @@
 use std::rc::Rc;
 
-#[derive(Debug, Clone)]
-pub struct Texture {
-    pub id: Rc<u32>,
-    width: i32,
-    height: i32,
-}
-
-impl Texture {
-    pub fn empty() -> Self {
-        Texture { id: 0.into(), width: 1, height: 1 } // todo! this is debug only!!!!
-    }
-    pub fn builder(data: &[u8], width: u16, height: u16, format: TextureFormat) -> TextureBuilder {
-        TextureBuilder {
-            data,
-            width: i32::from(width),
-            height: i32::from(height),
-            format,
-            wrap_s: TextureWrap::Repeat,
-            wrap_t: TextureWrap::Repeat,
-            min_filter: MinFilter::Linear,
-            mag_filter: MagFilter::Linear,
-        }
-    }
-    pub fn width(&self) -> i32 {
-        self.width
-    }
-    pub fn height(&self) -> i32 {
-        self.height
-    }
-}
-
-impl Drop for Texture {
-    fn drop(&mut self) {
-        if 1 == Rc::strong_count(&self.id) {
-            unsafe {
-                todo!();
-                // gl::DeleteTextures(1, self.id.as_ref());
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureFormat {

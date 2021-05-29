@@ -13,7 +13,8 @@ var r_locals: Locals;
 [[stage(vertex)]]
 fn vs_main(
     [[location(0)]] position: vec4<f32>,
-    [[location(1)]] tex_coord: vec2<f32>,
+    [[location(1)]] normal: vec3<f32>,
+    [[location(2)]] tex_coord: vec2<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
     out.tex_coord = tex_coord;
