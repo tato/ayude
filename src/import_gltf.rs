@@ -4,7 +4,7 @@ use glam::Mat4;
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 use smallvec::SmallVec;
 
-use crate::{Node, Scene, Skin, graphics::{GraphicsContext, Material, Mesh, Texture, Vertex}, transform::Transform};
+use crate::{Node, Scene, Skin, graphics::{GraphicsContext, Material, Mesh, Texture, TextureDescription, Vertex}, transform::Transform};
 
 // notes:
 // for me, a gltf will only contain 1 entity, with 1 mesh, with 1 skin, with a set of
@@ -276,40 +276,36 @@ impl<'gfx> Importer<'gfx> {
             .get(image_index)
             .ok_or(ImportGltfError::UnknownImageIndex(image_index))?;
 
-        // todo!
         let sampler = texture.sampler();
 
-        // let mut builder = Texture::builder(&data, *width as u16, *height as u16, *format)
-        //     .wrap_s(match sampler.wrap_s() {
-        //         gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
-        //         gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
-        //         gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
-        //     })
-        //     .wrap_t(match sampler.wrap_t() {
-        //         gltf::texture::WrappingMode::ClampToEdge => TextureWrap::ClampToEdge,
-        //         gltf::texture::WrappingMode::MirroredRepeat => TextureWrap::MirroredRepeat,
-        //         gltf::texture::WrappingMode::Repeat => TextureWrap::Repeat,
-        //     });
+        let mut desc = TextureDescription::new(data, *width, *height, *format)
+            .wrap_s(match sampler.wrap_s() {
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+            })
+            .wrap_t(match sampler.wrap_s() {
+                gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                gltf::texture::WrappingMode::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                gltf::texture::WrappingMode::Repeat => wgpu::AddressMode::Repeat,
+            });
 
-        // if let Some(min_filter) = sampler.min_filter() {
-        //     builder = builder.min_filter(match min_filter {
-        //         gltf::texture::MinFilter::Nearest => MinFilter::Nearest,
-        //         gltf::texture::MinFilter::Linear => MinFilter::Linear,
-        //         gltf::texture::MinFilter::NearestMipmapNearest => MinFilter::NearestMipmapNearest,
-        //         gltf::texture::MinFilter::LinearMipmapNearest => MinFilter::LinearMipmapNearest,
-        //         gltf::texture::MinFilter::NearestMipmapLinear => MinFilter::NearestMipmapLinear,
-        //         gltf::texture::MinFilter::LinearMipmapLinear => MinFilter::LinearMipmapNearest,
-        //     });
-        // }
+        if let Some(min_filter) = sampler.min_filter() {
+            desc = desc.min_filter(match min_filter {
+                gltf::texture::MinFilter::Nearest => wgpu::FilterMode::Nearest,
+                gltf::texture::MinFilter::Linear => wgpu::FilterMode::Linear,
+                _ => unimplemented!(),
+            });
+        }
 
-        // if let Some(mag_filter) = sampler.mag_filter() {
-        //     builder = builder.mag_filter(match mag_filter {
-        //         gltf::texture::MagFilter::Nearest => MagFilter::Nearest,
-        //         gltf::texture::MagFilter::Linear => MagFilter::Linear,
-        //     });
-        // }
+        if let Some(mag_filter) = sampler.mag_filter() {
+            desc = desc.mag_filter(match mag_filter {
+                gltf::texture::MagFilter::Nearest => wgpu::FilterMode::Nearest,
+                gltf::texture::MagFilter::Linear => wgpu::FilterMode::Linear,
+            });
+        }
 
-        let texture = self.graphics.create_texture(&data, *width, *height, *format);
+        let texture = self.graphics.create_texture(&desc);
         Ok(texture)
     }
 

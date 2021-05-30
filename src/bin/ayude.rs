@@ -1,4 +1,4 @@
-use ayude::{Scene, camera::Camera, graphics::{self, GraphicsContext}, import_gltf, transform::Transform};
+use ayude::{Scene, camera::Camera, graphics::{self, GraphicsContext, TextureDescription}, import_gltf, transform::Transform};
 use glam::{Mat4, Vec2, Vec3};
 use rusttype::{Font, Scale};
 use std::{
@@ -94,12 +94,12 @@ impl World {
                 }
             }
 
-            renderer.create_texture(
+            renderer.create_texture(&TextureDescription::new(
                 &pixel_data,
                 width as u32,
                 pixel_height as u32,
                 wgpu::TextureFormat::Rgba8Unorm,
-            )
+            ))
         };
 
         let world = World {

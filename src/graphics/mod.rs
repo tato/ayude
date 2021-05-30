@@ -339,16 +339,10 @@ impl GraphicsContext {
         }
     }
 
-    pub fn create_texture(
-        &self,
-        texels: &[u8],
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-    ) -> Texture {
+    pub fn create_texture(&self, desc: &TextureDescription) -> Texture {
         let texture_extent = wgpu::Extent3d {
-            width,
-            height,
+            width: desc.width,
+            height: desc.height,
             depth_or_array_layers: 1,
         };
 
@@ -358,7 +352,7 @@ impl GraphicsContext {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format,
+            format: desc.format,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
@@ -368,10 +362,10 @@ impl GraphicsContext {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            texels,
+            desc.texels,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(std::num::NonZeroU32::new(width * 4).unwrap()),
+                bytes_per_row: Some(std::num::NonZeroU32::new(desc.width * 4).unwrap()),
                 rows_per_image: None,
             },
             texture_extent,
@@ -379,10 +373,10 @@ impl GraphicsContext {
 
         let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: desc.wrap_s,
+            address_mode_v: desc.wrap_t,
+            mag_filter: desc.mag_filter,
+            min_filter: desc.min_filter,
             ..Default::default()
         });
 
@@ -405,8 +399,8 @@ impl GraphicsContext {
 
         Texture {
             bind_group: bind_group.into(),
-            width,
-            height,
+            width: desc.width,
+            height: desc.height,
         }
     }
 
@@ -458,7 +452,12 @@ impl GraphicsContext {
             let pixels = [
                 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255u8,
             ];
-            self.create_texture(&pixels, 2, 2, wgpu::TextureFormat::Rgba8Unorm)
+            self.create_texture(&TextureDescription::new(
+                &pixels,
+                2,
+                2,
+                wgpu::TextureFormat::Rgba8Unorm,
+            ))
         })
     }
 }
@@ -508,6 +507,48 @@ pub struct Texture {
 impl Texture {
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+}
+
+pub struct TextureDescription<'a> {
+    texels: &'a [u8],
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    wrap_s: wgpu::AddressMode,
+    wrap_t: wgpu::AddressMode,
+    min_filter: wgpu::FilterMode,
+    mag_filter: wgpu::FilterMode,
+}
+
+impl<'a> TextureDescription<'a> {
+    pub fn new(texels: &'a [u8], width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
+        Self {
+            texels,
+            width,
+            height,
+            format,
+            wrap_s: wgpu::AddressMode::ClampToEdge,
+            wrap_t: wgpu::AddressMode::ClampToEdge,
+            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Linear,
+        }
+    }
+    pub fn wrap_s(mut self, mode: wgpu::AddressMode) -> Self {
+        self.wrap_s = mode;
+        self
+    }
+    pub fn wrap_t(mut self, mode: wgpu::AddressMode) -> Self {
+        self.wrap_t = mode;
+        self
+    }
+    pub fn min_filter(mut self, mode: wgpu::FilterMode) -> Self {
+        self.min_filter = mode;
+        self
+    }
+    pub fn mag_filter(mut self, mode: wgpu::FilterMode) -> Self {
+        self.mag_filter = mode;
+        self
     }
 }
 
