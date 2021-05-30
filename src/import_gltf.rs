@@ -312,6 +312,7 @@ impl<'gfx> Importer<'gfx> {
             normal,
             diffuse,
             base_diffuse_color,
+            shaded: true,
         })
     }
 

@@ -14,6 +14,7 @@ pub struct Material {
     pub normal: Option<Texture>,
     pub diffuse: Option<Texture>,
     pub base_diffuse_color: [f32; 4],
+    pub shaded: bool,
 }
 
 pub struct GraphicsContext {
@@ -248,7 +249,7 @@ impl GraphicsContext {
             base_diffuse_color: material.base_diffuse_color,
             has_diffuse_texture: if diffuse.is_some() { 1 } else { 0 },
             has_normal_texture: if normal.is_some() { 1 } else { 0 },
-            shaded: 1,
+            shaded: if material.shaded { 1 } else { 0 },
         };
         self.queue
             .write_buffer(&mesh.uniform_buffer(), 0, bytemuck::cast_slice(&[uniforms]));
@@ -441,6 +442,7 @@ impl GraphicsContext {
                 base_diffuse_color: [1.0, 1.0, 1.0, 1.0],
                 diffuse: None,
                 normal: None,
+                shaded: false,
             };
             let mesh = self.create_mesh(&vertices, &indices, &material);
             mesh
