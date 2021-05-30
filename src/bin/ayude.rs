@@ -26,9 +26,10 @@ pub struct World {
     the_scene: Scene,
     _the_sphere: Scene,
 
-    the_scene_skin_visualization: Vec<(Material, Scene)>,
+    the_scene_skin_visualization: Vec<(graphics::UniformBuffer, Material, Scene)>,
 
     test_font_texture: graphics::Texture,
+    test_font_uniform_buffer: graphics::UniformBuffer,
 
     rendering_skin: bool,
 
@@ -105,6 +106,7 @@ impl World {
         };
 
         let test_font_texture = create_texture_for_text(&font, &graphics, "RIGHT NOW.");
+        let test_font_uniform_buffer = graphics.create_uniform_buffer();
 
         let the_scene_skin_visualization = {
             let mut res = vec![];
@@ -135,7 +137,7 @@ impl World {
                         transform = transform * current.transform.mat4();
                     }
 
-                    let mut joint_scene = the_sphere.clone();
+                    let mut joint_scene = the_sphere.duplicate(&graphics);
                     joint_scene.transform = Transform::from(
                         transform
                             * skeleton_transform.mat4()
@@ -152,7 +154,9 @@ impl World {
                         shaded: false,
                     };
 
-                    res.push((mat, joint_scene));
+                    let ub = graphics.create_uniform_buffer();
+
+                    res.push((ub, mat, joint_scene));
                 }
             }
             res
@@ -169,6 +173,7 @@ impl World {
             the_scene_skin_visualization,
 
             test_font_texture,
+            test_font_uniform_buffer,
 
             rendering_skin: false,
 
@@ -209,6 +214,7 @@ impl World {
                 self.the_scene.render(&mut pass, perspective, view);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
                 pass.render_billboard(
+                    &self.test_font_uniform_buffer,
                     &text_material,
                     perspective,
                     view,
@@ -216,10 +222,11 @@ impl World {
                     self.camera.transform().position(),
                 );
             } else {
-                for (name, scene) in &self.the_scene_skin_visualization {
+                for (ub, name, scene) in &self.the_scene_skin_visualization {
                     scene.render(&mut pass, perspective, view);
 
                     pass.render_billboard(
+                        ub,
                         &name,
                         perspective,
                         view,

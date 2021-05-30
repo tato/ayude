@@ -244,32 +244,30 @@ impl GraphicsContext {
                 usage: wgpu::BufferUsage::INDEX,
             });
 
-        let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        Mesh {
+            inner: (vertex_buffer, index_buffer).into(),
+            index_count: indices.len(),
+        }
+    }
+
+    pub fn create_uniform_buffer(&self) -> UniformBuffer {
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Uniform Buffer"),
             size: std::mem::size_of::<Uniforms>() as _,
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
             mapped_at_creation: false,
         });
 
-        let uniform_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.uniform_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
+                resource: buffer.as_entire_binding(),
             }],
         });
 
-        Mesh {
-            inner: (
-                vertex_buffer,
-                index_buffer,
-                uniform_bind_group,
-                uniform_buffer,
-            )
-                .into(),
-            index_count: indices.len(),
-        }
+        UniformBuffer { buffer, bind_group }
     }
 
     pub fn create_texture(&self, desc: &TextureDescription) -> Texture {
@@ -409,27 +407,19 @@ pub struct Vertex {
 
 #[derive(Debug, Clone)]
 pub struct Mesh {
-    /// vertex_buffer, index_buffer, uniform_bind_group, uniform_buffer
-    inner: Rc<(wgpu::Buffer, wgpu::Buffer, wgpu::BindGroup, wgpu::Buffer)>,
+    /// vertex_buffer, index_buffer
+    inner: Rc<(wgpu::Buffer, wgpu::Buffer)>,
     pub index_count: usize,
 }
 
 impl Mesh {
     pub fn vertex(&self) -> &wgpu::Buffer {
-        let (vertex, _, _, _) = self.inner.as_ref();
+        let (vertex, _) = self.inner.as_ref();
         vertex
     }
     pub fn index(&self) -> &wgpu::Buffer {
-        let (_, index, _, _) = self.inner.as_ref();
+        let (_, index) = self.inner.as_ref();
         index
-    }
-    pub fn uniform_bind_group(&self) -> &wgpu::BindGroup {
-        let (_, _, ubg, _) = self.inner.as_ref();
-        ubg
-    }
-    pub fn uniform_buffer(&self) -> &wgpu::Buffer {
-        let (_, _, _, buf) = self.inner.as_ref();
-        buf
     }
 }
 
@@ -500,6 +490,11 @@ struct Uniforms {
     shaded: u32,
 }
 
+#[derive(Debug)]
+pub struct UniformBuffer {
+    buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+}
 
 pub struct Frame<'gfx> {
     graphics: &'gfx GraphicsContext,
@@ -554,6 +549,7 @@ impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
     pub fn render_mesh(
         &mut self,
         mesh: &'frame Mesh,
+        uniform_buffer: &'frame UniformBuffer,
         material: &'frame Material,
         perspective: Mat4,
         view: Mat4,
@@ -572,7 +568,7 @@ impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
             shaded: if material.shaded { 1 } else { 0 },
         };
         self.graphics.queue.write_buffer(
-            &mesh.uniform_buffer(),
+            &uniform_buffer.buffer,
             0,
             bytemuck::cast_slice(&[uniforms]),
         );
@@ -581,17 +577,18 @@ impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
         let normal = normal.unwrap_or_else(|| self.graphics.get_default_texture());
 
         self.pass.set_pipeline(&self.graphics.pipeline);
-        self.pass.set_bind_group(0, &mesh.uniform_bind_group(), &[]);
+        self.pass.set_bind_group(0, &uniform_buffer.bind_group, &[]);
         self.pass.set_bind_group(1, diffuse.bind_group(), &[]);
         self.pass.set_bind_group(2, normal.bind_group(), &[]);
-        self.pass.set_index_buffer(mesh.index().slice(..), wgpu::IndexFormat::Uint16);
+        self.pass
+            .set_index_buffer(mesh.index().slice(..), wgpu::IndexFormat::Uint16);
         self.pass.set_vertex_buffer(0, mesh.vertex().slice(..));
         self.pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
-    
     pub fn render_billboard(
         &mut self,
+        uniform_buffer: &'frame UniformBuffer,
         material: &'frame Material,
         perspective: Mat4,
         view: Mat4,
@@ -613,6 +610,6 @@ impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
         };
         let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
 
-        self.render_mesh(&mesh, material, perspective, view, model);
+        self.render_mesh(&mesh, uniform_buffer, material, perspective, view, model);
     }
 }

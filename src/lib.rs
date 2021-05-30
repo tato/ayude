@@ -7,6 +7,7 @@ pub mod catalog;
 pub use catalog::Catalog;
 use glam::Mat4;
 
+use graphics::GraphicsContext;
 use smallvec::SmallVec;
 use transform::Transform;
 
@@ -14,7 +15,7 @@ pub mod camera;
 pub mod import_gltf;
 pub mod transform;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Scene {
     pub nodes: Vec<Node>,
     pub root_nodes: SmallVec<[u16; 4]>,
@@ -48,25 +49,52 @@ impl Scene {
                 Transform::from(transform)
             };
 
-            for (mesh, material) in &node.meshes {
+            for (mesh, ub, material) in &node.meshes {
                 let base_transform = base_transform.mat4();
                 let mesh_transform = transform.mat4();
                 let model = mesh_transform * base_transform;
 
-                pass.render_mesh(mesh, material, perspective, view, model);
+                pass.render_mesh(mesh, ub, material, perspective, view, model);
             }
+        }
+    }
+
+    pub fn duplicate(&self, graphics: &GraphicsContext) -> Self {
+        Self {
+            nodes: self.nodes.iter().map(|it| it.duplicate(graphics)).collect(),
+            root_nodes: self.root_nodes.clone(),
+            transform: self.transform.clone(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Node {
     pub parent: Option<u16>,
     pub children: SmallVec<[u16; 4]>,
     pub transform: Transform,
-    pub meshes: Vec<(graphics::Mesh, graphics::Material)>,
+    pub meshes: Vec<(graphics::Mesh, graphics::UniformBuffer, graphics::Material)>,
     pub skin: Option<Skin>,
     pub name: Option<String>,
+}
+
+impl Node {
+    pub fn duplicate(&self, graphics: &GraphicsContext) -> Self {
+        Self {
+            parent: self.parent.clone(),
+            children: self.children.clone(),
+            transform: self.transform.clone(),
+            meshes: self
+                .meshes
+                .iter()
+                .map(|(mesh, _, mat)| {
+                    (mesh.clone(), graphics.create_uniform_buffer(), mat.clone())
+                })
+                .collect(),
+            skin: self.skin.clone(),
+            name: self.name.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

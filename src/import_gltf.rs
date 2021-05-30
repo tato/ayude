@@ -5,7 +5,9 @@ use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 use smallvec::SmallVec;
 
 use crate::{
-    graphics::{GraphicsContext, Material, Mesh, Texture, TextureDescription, Vertex},
+    graphics::{
+        GraphicsContext, Material, Mesh, Texture, TextureDescription, UniformBuffer, Vertex,
+    },
     transform::Transform,
     Node, Scene, Skin,
 };
@@ -317,14 +319,26 @@ impl<'gfx> Importer<'gfx> {
         })
     }
 
-    fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Vec<(Mesh, Material)>, ImportGltfError> {
+    fn import_gltf_mesh(
+        &mut self,
+        mesh: gltf::Mesh,
+    ) -> Result<Vec<(Mesh, UniformBuffer, Material)>, ImportGltfError> {
         let mesh_index = mesh.index();
         if let Some(m) = self
             .meshes
             .get(mesh_index)
             .ok_or(ImportGltfError::UnknownMeshIndex(mesh_index))?
         {
-            return Ok(m.clone());
+            return Ok(m
+                .iter()
+                .map(|(mesh, mat)| {
+                    (
+                        mesh.clone(),
+                        self.graphics.create_uniform_buffer(),
+                        mat.clone(),
+                    )
+                })
+                .collect());
         }
 
         let mut primitives = vec![];
@@ -390,7 +404,9 @@ impl<'gfx> Importer<'gfx> {
             let material = self.import_gltf_material(primitive.material())?;
 
             let mesh = self.graphics.create_mesh(&vertices, &indices);
-            primitives.push((mesh, material.clone()));
+            let ub = self.graphics.create_uniform_buffer();
+
+            primitives.push((mesh, ub, material.clone()));
         }
 
         Ok(primitives)
