@@ -6,7 +6,7 @@ pub mod graphics;
 pub mod catalog;
 pub use catalog::Catalog;
 use glam::Mat4;
-use graphics::GraphicsContext;
+
 use smallvec::SmallVec;
 use transform::Transform;
 
@@ -22,16 +22,12 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn render<'gfx, 'scene, 'pass>(
+    pub fn render<'scene: 'pass, 'pass>(
         &'scene self,
-        gfx: &'gfx GraphicsContext,
+        pass: &'pass mut graphics::Pass<'scene, 'scene>,
         perspective: Mat4,
         view: Mat4,
-        pass: &mut wgpu::RenderPass<'pass>,
-    ) where
-        'gfx: 'pass,
-        'scene: 'pass,
-    {
+    ) {
         let base_transform = &self.transform;
         for node in &self.nodes {
             if node.meshes.is_empty() {
@@ -57,7 +53,7 @@ impl Scene {
                 let mesh_transform = transform.mat4();
                 let model = mesh_transform * base_transform;
 
-                gfx.render_mesh(mesh, material, perspective, view, model, pass);
+                pass.render_mesh(mesh, material, perspective, view, model);
             }
         }
     }

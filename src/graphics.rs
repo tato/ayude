@@ -19,16 +19,16 @@ pub struct Material {
 
 pub struct GraphicsContext {
     surface: wgpu::Surface,
-    pub device: wgpu::Device, // todo! not pub
+    device: wgpu::Device, // todo! not pub
     swap_chain: wgpu::SwapChain,
     swap_chain_descriptor: wgpu::SwapChainDescriptor,
-    pub queue: wgpu::Queue, // todo! not pub
+    queue: wgpu::Queue, // todo! not pub
     pipeline: wgpu::RenderPipeline,
     uniform_bind_group_layout: wgpu::BindGroupLayout,
     textures_bind_group_layout: wgpu::BindGroupLayout,
     default_texture: OnceCell<Texture>,
     quad_mesh: OnceCell<Mesh>,
-    pub depth_view: wgpu::TextureView, // todo! not pub
+    depth_view: wgpu::TextureView, // todo! not pub
 }
 
 impl GraphicsContext {
@@ -227,68 +227,6 @@ impl GraphicsContext {
         depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
-    pub fn render_mesh<'pass, 'gfx: 'pass, 'mesh: 'pass, 'mat: 'pass>(
-        &'gfx self,
-        mesh: &'mesh Mesh,
-        material: &'mat Material,
-        perspective: Mat4,
-        view: Mat4,
-        model: Mat4,
-        pass: &mut wgpu::RenderPass<'pass>,
-    ) {
-        let diffuse = material.diffuse.as_ref();
-        let normal = material.normal.as_ref();
-
-        let uniforms = Uniforms {
-            mvp: (perspective * view * model).to_cols_array(),
-            transpose_inverse_modelview: (view * model).inverse().transpose().to_cols_array(),
-            light_direction: [-1.0, 0.4, 0.9f32, 0.0],
-            base_diffuse_color: material.base_diffuse_color,
-            has_diffuse_texture: if diffuse.is_some() { 1 } else { 0 },
-            has_normal_texture: if normal.is_some() { 1 } else { 0 },
-            shaded: if material.shaded { 1 } else { 0 },
-        };
-        self.queue
-            .write_buffer(&mesh.uniform_buffer(), 0, bytemuck::cast_slice(&[uniforms]));
-
-        let diffuse = diffuse.unwrap_or_else(|| self.get_default_texture());
-        let normal = normal.unwrap_or_else(|| self.get_default_texture());
-
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &mesh.uniform_bind_group(), &[]);
-        pass.set_bind_group(1, diffuse.bind_group(), &[]);
-        pass.set_bind_group(2, normal.bind_group(), &[]);
-        pass.set_index_buffer(mesh.index().slice(..), wgpu::IndexFormat::Uint16);
-        pass.set_vertex_buffer(0, mesh.vertex().slice(..));
-        pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
-    }
-
-    pub fn render_billboard<'pass, 'gfx: 'pass, 'mesh: 'pass, 'mat: 'pass>(
-        &'gfx self,
-        material: &'mat Material,
-        pass: &mut wgpu::RenderPass<'pass>,
-        position: Vec3,
-        perspective: Mat4,
-        camera: &crate::camera::Camera,
-    ) {
-        let mesh = self.get_quad_mesh();
-        let texture = material.diffuse.as_ref().unwrap();
-
-        let w = texture.width as f32;
-        let h = texture.height as f32;
-        let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
-        let rotation = {
-            let fwd = camera.transform().position() - position;
-            let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
-            let yaw = f32::atan2(fwd.z, fwd.x);
-            let pitch = f32::asin(fwd.y);
-            Mat4::from_euler(glam::EulerRot::YXZ, -yaw, pitch, 0.0)
-        };
-        let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
-
-        self.render_mesh(&mesh, material, perspective, camera.view(), model, pass);
-    }
-
     pub fn create_mesh(&self, vertices: &[Vertex], indices: &[u16]) -> Mesh {
         let vertex_buffer = self
             .device
@@ -399,7 +337,7 @@ impl GraphicsContext {
         }
     }
 
-    pub fn get_current_frame(&mut self) -> wgpu::SwapChainFrame {
+    pub fn get_current_frame<'gfx>(&'gfx mut self) -> Frame<'gfx> {
         let frame = match self.swap_chain.get_current_frame() {
             Ok(frame) => frame,
             Err(_) => {
@@ -411,7 +349,16 @@ impl GraphicsContext {
                     .expect("Failed to acquire next swap chain texture!")
             }
         };
-        frame
+
+        let encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        Frame {
+            graphics: self,
+            frame,
+            encoder,
+        }
     }
 
     fn get_quad_mesh(&self) -> &Mesh {
@@ -551,4 +498,120 @@ struct Uniforms {
     has_diffuse_texture: u32,
     has_normal_texture: u32,
     shaded: u32,
+}
+
+pub struct Frame<'gfx> {
+    graphics: &'gfx GraphicsContext,
+    frame: wgpu::SwapChainFrame,
+    encoder: wgpu::CommandEncoder,
+}
+
+impl<'gfx> Frame<'gfx> {
+    pub fn begin_render_pass<'frame>(&'frame mut self) -> Pass<'gfx, 'frame> {
+        let pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view: &self.frame.output.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.graphics.depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: false,
+                }),
+                stencil_ops: None,
+            }),
+        });
+
+        Pass {
+            graphics: self.graphics,
+            pass,
+        }
+    }
+
+    pub fn submit(self) {
+        self.graphics.queue.submit(Some(self.encoder.finish()));
+    }
+}
+
+pub struct Pass<'gfx, 'frame> {
+    graphics: &'gfx GraphicsContext,
+    pass: wgpu::RenderPass<'frame>,
+}
+
+impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
+    pub fn render_mesh(
+        &mut self,
+        mesh: &'frame Mesh,
+        material: &'frame Material,
+        perspective: Mat4,
+        view: Mat4,
+        model: Mat4,
+    ) {
+        let diffuse = material.diffuse.as_ref();
+        let normal = material.normal.as_ref();
+
+        let uniforms = Uniforms {
+            mvp: (perspective * view * model).to_cols_array(),
+            transpose_inverse_modelview: (view * model).inverse().transpose().to_cols_array(),
+            light_direction: [-1.0, 0.4, 0.9f32, 0.0],
+            base_diffuse_color: material.base_diffuse_color,
+            has_diffuse_texture: if diffuse.is_some() { 1 } else { 0 },
+            has_normal_texture: if normal.is_some() { 1 } else { 0 },
+            shaded: if material.shaded { 1 } else { 0 },
+        };
+        self.graphics.queue.write_buffer(
+            &mesh.uniform_buffer(),
+            0,
+            bytemuck::cast_slice(&[uniforms]),
+        );
+
+        let diffuse = diffuse.unwrap_or_else(|| self.graphics.get_default_texture());
+        let normal = normal.unwrap_or_else(|| self.graphics.get_default_texture());
+
+        self.pass.set_pipeline(&self.graphics.pipeline);
+        self.pass.set_bind_group(0, &mesh.uniform_bind_group(), &[]);
+        self.pass.set_bind_group(1, diffuse.bind_group(), &[]);
+        self.pass.set_bind_group(2, normal.bind_group(), &[]);
+        self.pass.set_index_buffer(mesh.index().slice(..), wgpu::IndexFormat::Uint16);
+        self.pass.set_vertex_buffer(0, mesh.vertex().slice(..));
+        self.pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
+    }
+
+    
+    pub fn render_billboard(
+        &mut self,
+        material: &'frame Material,
+        perspective: Mat4,
+        view: Mat4,
+        position: Vec3,
+        camera_position: Vec3,
+    ) {
+        let mesh = self.graphics.get_quad_mesh();
+        let texture = material.diffuse.as_ref().unwrap();
+
+        let w = texture.width as f32;
+        let h = texture.height as f32;
+        let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
+        let rotation = {
+            let fwd = camera_position - position;
+            let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
+            let yaw = f32::atan2(fwd.z, fwd.x);
+            let pitch = f32::asin(fwd.y);
+            Mat4::from_euler(glam::EulerRot::YXZ, -yaw, pitch, 0.0)
+        };
+        let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
+
+        self.render_mesh(&mesh, material, perspective, view, model);
+    }
 }

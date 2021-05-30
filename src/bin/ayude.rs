@@ -1,4 +1,10 @@
-use ayude::{Scene, camera::Camera, graphics::{self, GraphicsContext, TextureDescription}, import_gltf, transform::Transform};
+use ayude::{
+    camera::Camera,
+    graphics::{self, GraphicsContext, TextureDescription},
+    import_gltf,
+    transform::Transform,
+    Scene,
+};
 use glam::{Mat4, Vec2, Vec3};
 use rusttype::{Font, Scale};
 use std::{
@@ -126,7 +132,7 @@ impl World {
     }
 
     fn render(&mut self, window_dimensions: (i32, i32)) {
-        let frame = self.graphics.get_current_frame();
+        let mut frame = self.graphics.get_current_frame();
 
         let perspective = glam::Mat4::perspective_rh_gl(
             std::f32::consts::PI / 3.0,
@@ -137,11 +143,6 @@ impl World {
 
         let view = self.camera.view();
 
-        let mut encoder = self
-            .graphics
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
         let text_material = graphics::Material {
             base_diffuse_color: [0.0, 0.0, 0.0, 1.0],
             diffuse: Some(self.ricardo.clone()),
@@ -150,41 +151,17 @@ impl World {
         };
 
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &frame.output.view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.graphics.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: false,
-                    }),
-                    stencil_ops: None,
-                }),
-            });
+            let mut pass = frame.begin_render_pass();
 
             if !self.rendering_skin {
-                self.the_scene
-                    .render(&self.graphics, perspective, view, &mut pass);
+                self.the_scene.render(&mut pass, perspective, view);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
-                self.graphics.render_billboard(
+                pass.render_billboard(
                     &text_material,
-                    &mut pass,
-                    translation,
                     perspective,
-                    &self.camera,
+                    view,
+                    translation,
+                    self.camera.transform().position(),
                 );
             } else {
                 let scene = &self.the_scene;
@@ -215,7 +192,8 @@ impl World {
                         }
 
                         self.the_sphere.transform = Transform::from(
-                            transform * skeleton_transform.mat4()
+                            transform
+                                * skeleton_transform.mat4()
                                 * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
                         );
 
@@ -224,7 +202,7 @@ impl World {
                 }
             };
         }
-        self.graphics.queue.submit(Some(encoder.finish()));
+        frame.submit();
     }
 }
 
