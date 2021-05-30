@@ -129,7 +129,7 @@ impl GraphicsContext {
 
         let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("../shader/shader.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader/shader.wgsl"))),
             flags: wgpu::ShaderFlags::all(),
         });
 
@@ -244,10 +244,10 @@ impl GraphicsContext {
         let uniforms = Uniforms {
             mvp: (perspective * view * model).to_cols_array(),
             transpose_inverse_modelview: (view * model).inverse().transpose().to_cols_array(),
-            light_direction: [-1.0, 0.4, 0.9f32],
+            light_direction: [-1.0, 0.4, 0.9f32, 0.0],
+            base_diffuse_color: material.base_diffuse_color,
             has_diffuse_texture: if diffuse.is_some() { 1 } else { 0 },
             has_normal_texture: if normal.is_some() { 1 } else { 0 },
-            base_diffuse_color: material.base_diffuse_color,
             shaded: 1,
         };
         self.queue
@@ -557,9 +557,9 @@ impl<'a> TextureDescription<'a> {
 struct Uniforms {
     mvp: [f32; 16],
     transpose_inverse_modelview: [f32; 16],
-    light_direction: [f32; 3],
+    light_direction: [f32; 4],
+    base_diffuse_color: [f32; 4],
     has_diffuse_texture: u32,
     has_normal_texture: u32,
-    base_diffuse_color: [f32; 4],
     shaded: u32,
 }

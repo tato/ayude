@@ -4,44 +4,16 @@ use glam::Mat4;
 use image::{DynamicImage, EncodableLayout, ImageError, ImageFormat};
 use smallvec::SmallVec;
 
-use crate::{Node, Scene, Skin, graphics::{GraphicsContext, Material, Mesh, Texture, TextureDescription, Vertex}, transform::Transform};
+use crate::{
+    graphics::{GraphicsContext, Material, Mesh, Texture, TextureDescription, Vertex},
+    transform::Transform,
+    Node, Scene, Skin,
+};
 
-// notes:
-// for me, a gltf will only contain 1 entity, with 1 mesh, with 1 skin, with a set of
-// animations, textures and materials. the entity could be and in fact will probably
-// be a tree of nodes, but from outside it will seem a single object.
-// if possible, the set of nodes, meshes and skins in the gltf file should be
-// condensed into 1. if not, we'd have to choose 1 and discard the rest.
-//
-// in reality, a gltf should not import as an "Entity", it should maybe act as an
-// entity blueprint, or even forget the concept of entity and just import the mesh.
-//
-// another option would be to borrow the concept of a "scene" from the gltf. in that
-// case, the gltf would import into a list of "scenes", and the meshes, textures,
-// materials and so on could be shared between these "scenes". then, i'd have a
-// "SceneEntity" object that i could instantiate and would refer to one of these
-// "scenes" as a blueprint.
-//
-// one possible problem with this last approach could be the cleanup stage. if we
-// have so many meshes and textures and so on lying around with no reference to
-// their parent scene, we could end up with some storage issues when we no longer
-// need the scene. a mesh could be used by multiple scenes, so that stuff would
-// need to be checked before it's cleaned up. the solution to that is each
-// "scene" or entity blueprint or whatever having its own copy of a mesh, texture,
-// etc that it needs. OR these meshes, textures, etc being attached to certain
-// "stages" or "levels" of the game which know they need a set of scenes or
-// whatever. this might not be too hard, it could be inferred from the construction
-// of the levels themselves.
-//
-// the clearest of the fuzzy ideas floating around in my mind right now is:
-//   [gltf files] --level editor--> level file --engine loader--> [entity blueprints]
-// i don't have a semblance of a level editor right now, so the association between
-// multiple gltf files could be inferred from filesystem or some other simple system
-// for now. in the future if these are imported to the engine and stuff they will
-// have the possibility of deduping textures and so on, but for now the conclusion is
-// IMPORT SCENES FROM EACH GLTF FILE AND DON'T HAVE A GLOBAL MESH, TEXTURE, ETC THING
-
-pub fn import_default_scene(file_name: &str, graphics: &GraphicsContext) -> Result<Scene, ImportGltfError> {
+pub fn import_default_scene(
+    file_name: &str,
+    graphics: &GraphicsContext,
+) -> Result<Scene, ImportGltfError> {
     let gltf = gltf::Gltf::open(file_name)?;
     let base_path = file_name[0..file_name.rfind("/").unwrap()].to_string();
     let mut importer = Importer {
@@ -358,21 +330,23 @@ impl<'gfx> Importer<'gfx> {
             let reader =
                 primitive.reader(|buffer| self.buffers.get(buffer.index()).map(Vec::as_slice));
 
-            let mut positions = reader
-                .read_positions()
-                .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
-                    "positions",
-                    mesh.index(),
-                    primitive.index(),
-                ))?;
+            let mut positions =
+                reader
+                    .read_positions()
+                    .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
+                        "positions",
+                        mesh.index(),
+                        primitive.index(),
+                    ))?;
 
-            let mut normals = reader
-                .read_normals()
-                .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
-                    "normals",
-                    mesh.index(),
-                    primitive.index(),
-                ))?;
+            let mut normals =
+                reader
+                    .read_normals()
+                    .ok_or(ImportGltfError::RequiredMeshPropertyMissing(
+                        "normals",
+                        mesh.index(),
+                        primitive.index(),
+                    ))?;
 
             let mut tex_coords = reader
                 .read_tex_coords(0)
@@ -382,17 +356,21 @@ impl<'gfx> Importer<'gfx> {
                     primitive.index(),
                 ))?
                 .into_f32();
-            
+
             let mut vertices: Vec<Vertex> = Vec::with_capacity(positions.len());
             for _ in 0..positions.len() {
                 let p = positions.next().unwrap();
-                let position = [ p[0], p[1], p[2], 1.0];
+                let position = [p[0], p[1], p[2], 1.0];
                 let normal = normals.next().unwrap();
-                let tex_coord = { 
+                let tex_coord = {
                     let val = tex_coords.next().unwrap();
                     [val[0], val[1]]
                 };
-                let vertex = Vertex { position, normal, tex_coord };
+                let vertex = Vertex {
+                    position,
+                    normal,
+                    tex_coord,
+                };
                 vertices.push(vertex);
             }
 
@@ -415,65 +393,6 @@ impl<'gfx> Importer<'gfx> {
 
         Ok(primitives)
     }
-
-    // fn import_gltf_skin(&mut self, skin: gltf::Skin) -> Result<Skin, ImportGltfError> {
-    //     let skin_index = skin.index();
-    //     if let Some(sk) = self.skins.get(skin_index).ok_or(ImportGltfError::UnknownSkinIndex(skin_index))? {
-    //         return Ok(sk.clone());
-    //     }
-
-    //     let mut joints = vec![];
-    //     for joint in skin.joints() {
-    //         let joint_index = join.index();
-    //         joints.push(
-    //             self.nodes
-    //                 .get(joint_index)
-    //                 .copied()
-    //                 .ok_or(ImportGltfError::UnknownNodeIndex(joint_index))?,
-    //         );
-    //     }
-
-    //     Ok(Skin { joints })
-    // }
-
-    // fn import_gltf_partial_node(
-    //     &mut self,
-    //     node: gltf::Node,
-    // ) -> Result<Id<Entity>, ImportGltfError> {
-    //     let mesh = match node.mesh() {
-    //         Some(mesh) => self.meshes.get(mesh.index()).copied(),
-    //         None => None,
-    //     };
-    //     let entity = Entity {
-    //         children: vec![],
-    //         parent: None,
-    //         skin: None,
-    //         mesh,
-    //         transform: node.transform().matrix(),
-    //     };
-    //     Ok(self.entities_catalog.add(entity))
-    // }
-
-    // // todo! prevent possible panics
-    // fn complete_gltf_node_import(&mut self, node: gltf::Node) {
-    //     for child in node.children() {
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[node.index()])
-    //             .unwrap()
-    //             .children
-    //             .push(self.nodes[child.index()]);
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[child.index()])
-    //             .unwrap()
-    //             .parent = Some(self.nodes[node.index()]);
-    //     }
-    //     if let Some(skin) = node.skin() {
-    //         self.entities_catalog
-    //             .get_mut(self.nodes[node.index()])
-    //             .unwrap()
-    //             .skin = Some(self.skins[skin.index()]);
-    //     }
-    // }
 }
 
 fn data_uri_to_bytes_and_type(uri: &str) -> Result<(Vec<u8>, &str), base64::DecodeError> {
