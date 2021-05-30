@@ -52,12 +52,12 @@ impl Scene {
                 Transform::from(transform)
             };
 
-            for mesh in &node.meshes {
+            for (mesh, material) in &node.meshes {
                 let base_transform = base_transform.mat4();
                 let mesh_transform = transform.mat4();
                 let model = mesh_transform * base_transform;
 
-                gfx.render_mesh(mesh, perspective, view, model, pass);
+                gfx.render_mesh(mesh, material, perspective, view, model, pass);
             }
         }
     }
@@ -68,7 +68,7 @@ pub struct Node {
     pub parent: Option<u16>,
     pub children: SmallVec<[u16; 4]>,
     pub transform: Transform,
-    pub meshes: Vec<graphics::Mesh>,
+    pub meshes: Vec<(graphics::Mesh, graphics::Material)>,
     pub skin: Option<Skin>,
 }
 

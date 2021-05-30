@@ -227,18 +227,15 @@ impl GraphicsContext {
         depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
-    pub fn render_mesh<'gfx, 'mesh, 'pass>(
+    pub fn render_mesh<'pass, 'gfx: 'pass, 'mesh: 'pass, 'mat: 'pass>(
         &'gfx self,
         mesh: &'mesh Mesh,
+        material: &'mat Material,
         perspective: Mat4,
         view: Mat4,
         model: Mat4,
         pass: &mut wgpu::RenderPass<'pass>,
-    ) where
-        'mesh: 'pass,
-        'gfx: 'pass,
-    {
-        let material = &mesh.material;
+    ) {
         let diffuse = material.diffuse.as_ref();
         let normal = material.normal.as_ref();
 
@@ -266,18 +263,16 @@ impl GraphicsContext {
         pass.draw_indexed(0..mesh.index_count as u32, 0, 0..1);
     }
 
-    pub fn render_billboard<'gfx, 'mesh, 'pass>(
+    pub fn render_billboard<'pass, 'gfx: 'pass, 'mesh: 'pass, 'mat: 'pass>(
         &'gfx self,
-        mesh: &'mesh Mesh,
+        material: &'mat Material,
         pass: &mut wgpu::RenderPass<'pass>,
         position: Vec3,
         perspective: Mat4,
         camera: &crate::camera::Camera,
-    ) where
-        'gfx: 'pass,
-        'mesh: 'pass,
-    {
-        let texture = mesh.material.diffuse.as_ref().unwrap();
+    ) {
+        let mesh = self.get_quad_mesh();
+        let texture = material.diffuse.as_ref().unwrap();
 
         let w = texture.width as f32;
         let h = texture.height as f32;
@@ -291,10 +286,10 @@ impl GraphicsContext {
         };
         let model = Mat4::from_translation(position) * rotation * Mat4::from_scale(scale);
 
-        self.render_mesh(&mesh, perspective, camera.view(), model, pass);
+        self.render_mesh(&mesh, material, perspective, camera.view(), model, pass);
     }
 
-    pub fn create_mesh(&self, vertices: &[Vertex], indices: &[u16], material: &Material) -> Mesh {
+    pub fn create_mesh(&self, vertices: &[Vertex], indices: &[u16]) -> Mesh {
         let vertex_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -336,7 +331,6 @@ impl GraphicsContext {
             )
                 .into(),
             index_count: indices.len(),
-            material: material.clone(),
         }
     }
 
@@ -420,7 +414,7 @@ impl GraphicsContext {
         frame
     }
 
-    pub fn get_quad_mesh(&self) -> &Mesh {
+    fn get_quad_mesh(&self) -> &Mesh {
         self.quad_mesh.get_or_init(|| {
             macro_rules! v {
                 ($pos:expr, $norm:expr, $uv:expr) => {
@@ -438,13 +432,7 @@ impl GraphicsContext {
                 v!([1.0, 1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0]),
             ];
             let indices = [0, 1, 2, 3, 2, 1];
-            let material = Material {
-                base_diffuse_color: [1.0, 1.0, 1.0, 1.0],
-                diffuse: None,
-                normal: None,
-                shaded: false,
-            };
-            let mesh = self.create_mesh(&vertices, &indices, &material);
+            let mesh = self.create_mesh(&vertices, &indices);
             mesh
         })
     }
@@ -477,7 +465,6 @@ pub struct Mesh {
     /// vertex_buffer, index_buffer, uniform_bind_group, uniform_buffer
     inner: Rc<(wgpu::Buffer, wgpu::Buffer, wgpu::BindGroup, wgpu::Buffer)>,
     pub index_count: usize,
-    pub material: Material,
 }
 
 impl Mesh {

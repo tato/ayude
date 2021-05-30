@@ -142,8 +142,12 @@ impl World {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let mut billboard = self.graphics.get_quad_mesh().clone();
-        billboard.material.diffuse = Some(self.ricardo.clone());
+        let text_material = graphics::Material {
+            base_diffuse_color: [0.0, 0.0, 0.0, 1.0],
+            diffuse: Some(self.ricardo.clone()),
+            normal: None,
+            shaded: false,
+        };
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -176,7 +180,7 @@ impl World {
                     .render(&self.graphics, perspective, view, &mut pass);
                 let translation = Vec3::new(-1.0, -1.0, 0.0);
                 self.graphics.render_billboard(
-                    &billboard,
+                    &text_material,
                     &mut pass,
                     translation,
                     perspective,

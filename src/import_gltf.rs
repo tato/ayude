@@ -38,7 +38,7 @@ struct Importer<'gfx> {
 
     textures: Vec<Option<Texture>>,
     materials: Vec<Option<Material>>,
-    meshes: Vec<Option<Vec<Mesh>>>,
+    meshes: Vec<Option<Vec<(Mesh, Material)>>>,
 
     graphics: &'gfx GraphicsContext,
 }
@@ -316,7 +316,7 @@ impl<'gfx> Importer<'gfx> {
         })
     }
 
-    fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Vec<Mesh>, ImportGltfError> {
+    fn import_gltf_mesh(&mut self, mesh: gltf::Mesh) -> Result<Vec<(Mesh, Material)>, ImportGltfError> {
         let mesh_index = mesh.index();
         if let Some(m) = self
             .meshes
@@ -388,8 +388,8 @@ impl<'gfx> Importer<'gfx> {
 
             let material = self.import_gltf_material(primitive.material())?;
 
-            let mesh = self.graphics.create_mesh(&vertices, &indices, &material);
-            primitives.push(mesh);
+            let mesh = self.graphics.create_mesh(&vertices, &indices);
+            primitives.push((mesh, material.clone()));
         }
 
         Ok(primitives)
