@@ -118,6 +118,7 @@ impl<'gfx> Importer<'gfx> {
                     transform,
                     meshes,
                     skin,
+                    name: node.name().map(str::to_string),
                 },
             ));
         }

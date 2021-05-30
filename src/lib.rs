@@ -14,7 +14,7 @@ pub mod camera;
 pub mod import_gltf;
 pub mod transform;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Scene {
     pub nodes: Vec<Node>,
     pub root_nodes: SmallVec<[u16; 4]>,
@@ -66,6 +66,7 @@ pub struct Node {
     pub transform: Transform,
     pub meshes: Vec<(graphics::Mesh, graphics::Material)>,
     pub skin: Option<Skin>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone)]

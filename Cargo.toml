@@ -17,7 +17,7 @@ winit = { version = "0.25", default-features = false }
 wgpu = "0.8"
 glam = "0.15"
 image = { version = "0", default-features = false, features = ["png", "jpeg"] }
-gltf = { version = "0.16", default-features = false, features = ["utils"] }
+gltf = { version = "0.16", default-features = false, features = ["utils", "names"] }
 base64 = "0.13"
 msgbox = "0"
 smallvec = { version = "1.6", features = [ "union" ] }

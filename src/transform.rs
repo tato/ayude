@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec3, Vec4};
 
 pub const GLOBAL_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
 pub const GLOBAL_UP: [f32; 3] = [0.0, 1.0, 0.0];
@@ -18,6 +18,16 @@ impl Transform {
         self.0
     }
 
+    pub fn scale(&self) -> Vec3 {
+        let (scale, _, _) = self.0.to_scale_rotation_translation();
+        scale
+    }
+
+    pub fn rotation(&self) -> Quat {
+        let (_, rotation, _) = self.0.to_scale_rotation_translation();
+        rotation
+    }
+    
     pub fn position(&self) -> Vec3 {
         let (_, _, position) = self.0.to_scale_rotation_translation();
         position

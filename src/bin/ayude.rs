@@ -1,6 +1,6 @@
 use ayude::{
     camera::Camera,
-    graphics::{self, GraphicsContext, TextureDescription},
+    graphics::{self, GraphicsContext, Material, TextureDescription},
     import_gltf,
     transform::Transform,
     Scene,
@@ -24,88 +24,138 @@ pub struct World {
     movement: [f32; 2], // stores WASD input
 
     the_scene: Scene,
-    the_sphere: Scene,
+    _the_sphere: Scene,
 
-    ricardo: graphics::Texture,
+    the_scene_skin_visualization: Vec<(Material, Scene)>,
+
+    test_font_texture: graphics::Texture,
 
     rendering_skin: bool,
 
     graphics: GraphicsContext,
 }
 
+fn create_texture_for_text(
+    font: &rusttype::Font,
+    graphics: &GraphicsContext,
+    text: &str,
+) -> graphics::Texture {
+    let height: f32 = 12.4;
+    let pixel_height = height.ceil() as usize;
+
+    let scale = Scale {
+        x: height * 2.0,
+        y: height,
+    };
+
+    let v_metrics = font.v_metrics(scale);
+    let offset = rusttype::point(0.0, v_metrics.ascent);
+
+    let glyphs: Vec<_> = font.layout(text, scale, offset).collect();
+
+    let width = glyphs
+        .iter()
+        .rev()
+        .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
+        .next()
+        .unwrap_or(0.0)
+        .ceil() as usize;
+
+    let mut pixel_data = vec![0u8; width * pixel_height * 4];
+    for g in glyphs {
+        if let Some(bb) = g.pixel_bounding_box() {
+            g.draw(|x, y, v| {
+                let gray = (v * 255.5) as u8;
+                let x = x as i32 + bb.min.x;
+                let y = y as i32 + bb.min.y;
+                if x >= 0 && x < width as i32 && y >= 0 && y < pixel_height as i32 {
+                    let i = (y as usize * width + x as usize) * 4;
+                    pixel_data[i] = gray;
+                    pixel_data[i + 1] = gray;
+                    pixel_data[i + 2] = gray;
+                    pixel_data[i + 3] = 255;
+                }
+            });
+        }
+    }
+
+    graphics.create_texture(&TextureDescription::new(
+        &pixel_data,
+        width as u32,
+        pixel_height as u32,
+        wgpu::TextureFormat::Rgba8Unorm,
+    ))
+}
+
 impl World {
-    fn new(renderer: GraphicsContext) -> Self {
+    fn new(graphics: GraphicsContext) -> Self {
         let gltf_file_name = "samples/knight/knight.gltf";
         // let gltf_file_name = "samples/principito_y_el_aviador/scene.gltf";
-        let the_entity = import_gltf::import_default_scene(gltf_file_name, &renderer).unwrap();
+        let the_scene = import_gltf::import_default_scene(gltf_file_name, &graphics).unwrap();
 
         let the_sphere =
-            import_gltf::import_default_scene("samples/sphere.gltf", &renderer).unwrap();
-
-        // let ricardo = {
-        //     let file = std::fs::read("samples/ricardo.jpg").unwrap();
-        //     let image = image::load_from_memory(&file).unwrap();
-        //     let image = image.into_rgba();
-        //     graphics::Texture::builder(
-        //         image.as_bytes(),
-        //         image.width() as u16,
-        //         image.height() as u16,
-        //         graphics::texture::TextureFormat::RGBA,
-        //     )
-        //     .build()
-        // };
+            import_gltf::import_default_scene("samples/sphere.gltf", &graphics).unwrap();
 
         let camera = Camera::new(Vec3::from([0.0, 0.0, 37.0]), std::f32::consts::PI, 0.0);
 
-        let test_font_texture = {
+        let font = {
             let data = std::fs::read("data/Cousine.ttf").expect("font file should exist");
             let font = Font::try_from_vec(data).expect("font should load");
+            font
+        };
 
-            let height: f32 = 12.4;
-            let pixel_height = height.ceil() as usize;
+        let test_font_texture = create_texture_for_text(&font, &graphics, "RIGHT NOW.");
 
-            let scale = Scale {
-                x: height * 2.0,
-                y: height,
-            };
+        let the_scene_skin_visualization = {
+            let mut res = vec![];
+            let scene = &the_scene;
+            for node in &scene.nodes {
+                let skin = match node.skin.as_ref() {
+                    Some(skin) => skin,
+                    None => continue,
+                };
 
-            let v_metrics = font.v_metrics(scale);
-            let offset = rusttype::point(0.0, v_metrics.ascent);
+                let skeleton_transform = match skin.skeleton {
+                    Some(skeleton) => {
+                        Transform::from(scene.nodes[usize::from(skeleton)].transform.mat4().clone())
+                    }
+                    None => scene.transform.clone(),
+                };
 
-            let glyphs: Vec<_> = font.layout("RIGHT NOW.", scale, offset).collect();
+                for &joint_index in &skin.joints {
+                    let joint = &scene.nodes[usize::from(joint_index)];
 
-            let width = glyphs
-                .iter()
-                .rev()
-                .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
-                .next()
-                .unwrap_or(0.0)
-                .ceil() as usize;
-
-            let mut pixel_data = vec![0u8; width * pixel_height * 4];
-            for g in glyphs {
-                if let Some(bb) = g.pixel_bounding_box() {
-                    g.draw(|x, y, v| {
-                        let gray = (v * 255.5) as u8;
-                        let x = x as i32 + bb.min.x;
-                        let y = y as i32 + bb.min.y;
-                        if x >= 0 && x < width as i32 && y >= 0 && y < pixel_height as i32 {
-                            let i = (y as usize * width + x as usize) * 4;
-                            pixel_data[i] = gray;
-                            pixel_data[i + 1] = gray;
-                            pixel_data[i + 2] = gray;
-                            pixel_data[i + 3] = 255;
+                    let mut transform = joint.transform.mat4().clone();
+                    let mut current = joint;
+                    'transform: loop {
+                        match current.parent {
+                            Some(index) => current = &scene.nodes[usize::from(index)],
+                            None => break 'transform,
                         }
-                    });
+                        transform = transform * current.transform.mat4();
+                    }
+
+                    let mut joint_scene = the_sphere.clone();
+                    joint_scene.transform = Transform::from(
+                        transform
+                            * skeleton_transform.mat4()
+                            * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
+                    );
+
+                    let name = joint.name.clone().unwrap_or(format!("{}", joint_index));
+                    let name_tex = create_texture_for_text(&font, &graphics, &name);
+
+                    let mat = Material {
+                        base_diffuse_color: [0.0, 0.0, 0.0, 1.0],
+                        diffuse: Some(name_tex),
+                        normal: None,
+                        shaded: false,
+                    };
+
+                    res.push((mat, joint_scene));
                 }
             }
-
-            renderer.create_texture(&TextureDescription::new(
-                &pixel_data,
-                width as u32,
-                pixel_height as u32,
-                wgpu::TextureFormat::Rgba8Unorm,
-            ))
+            res
         };
 
         let world = World {
@@ -113,14 +163,16 @@ impl World {
 
             movement: [0.0, 0.0],
 
-            the_scene: the_entity,
-            the_sphere,
+            the_scene,
+            _the_sphere: the_sphere,
 
-            ricardo: test_font_texture,
+            the_scene_skin_visualization,
+
+            test_font_texture,
 
             rendering_skin: false,
 
-            graphics: renderer,
+            graphics,
         };
 
         world
@@ -145,7 +197,7 @@ impl World {
 
         let text_material = graphics::Material {
             base_diffuse_color: [0.0, 0.0, 0.0, 1.0],
-            diffuse: Some(self.ricardo.clone()),
+            diffuse: Some(self.test_font_texture.clone()),
             normal: None,
             shaded: false,
         };
@@ -164,41 +216,16 @@ impl World {
                     self.camera.transform().position(),
                 );
             } else {
-                let scene = &self.the_scene;
-                for node in &scene.nodes {
-                    let skin = match node.skin.as_ref() {
-                        Some(skin) => skin,
-                        None => continue,
-                    };
+                for (name, scene) in &self.the_scene_skin_visualization {
+                    scene.render(&mut pass, perspective, view);
 
-                    let skeleton_transform = match skin.skeleton {
-                        Some(skeleton) => Transform::from(
-                            scene.nodes[usize::from(skeleton)].transform.mat4().clone(),
-                        ),
-                        None => scene.transform.clone(),
-                    };
-
-                    for &joint in &skin.joints {
-                        let joint = &scene.nodes[usize::from(joint)];
-
-                        let mut transform = joint.transform.mat4().clone();
-                        let mut current = joint;
-                        'transform: loop {
-                            match current.parent {
-                                Some(index) => current = &scene.nodes[usize::from(index)],
-                                None => break 'transform,
-                            }
-                            transform = transform * current.transform.mat4();
-                        }
-
-                        self.the_sphere.transform = Transform::from(
-                            transform
-                                * skeleton_transform.mat4()
-                                * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
-                        );
-
-                        // todo! self.the_sphere.render(&self.graphics, perspective, view, &mut pass);
-                    }
+                    pass.render_billboard(
+                        &name,
+                        perspective,
+                        view,
+                        scene.transform.position(),
+                        self.camera.transform().position(),
+                    );
                 }
             };
         }

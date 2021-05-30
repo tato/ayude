@@ -500,6 +500,7 @@ struct Uniforms {
     shaded: u32,
 }
 
+
 pub struct Frame<'gfx> {
     graphics: &'gfx GraphicsContext,
     frame: wgpu::SwapChainFrame,
