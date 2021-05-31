@@ -107,7 +107,20 @@ impl<'gfx> Importer<'gfx> {
                         None => Ok(None),
                     }?;
 
-                    Some(Skin { joints, skeleton })
+                    let inverse_bind_matrices = skin
+                        .reader(|buffer| self.buffers.get(buffer.index()).map(Vec::as_slice))
+                        .read_inverse_bind_matrices()
+                        .map(|it| {
+                            it.map(|mat| Transform::from(Mat4::from_cols_array_2d(&mat)))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec![Transform::from(Mat4::IDENTITY); joints.len()]);
+
+                    Some(Skin {
+                        joints,
+                        skeleton,
+                        inverse_bind_matrices,
+                    })
                 }
                 None => None,
             };
@@ -129,12 +142,7 @@ impl<'gfx> Importer<'gfx> {
 
         let nodes = nodes.into_iter().map(|it| it.1).collect();
 
-        let transform = Transform::from(Mat4::from_cols_array_2d(&[
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ]));
+        let transform = Transform::from(Mat4::IDENTITY);
 
         Ok(Scene {
             transform,

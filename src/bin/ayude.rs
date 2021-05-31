@@ -26,7 +26,8 @@ pub struct World {
     the_scene: Scene,
     _the_sphere: Scene,
 
-    the_scene_skin_visualization: Vec<(graphics::UniformBuffer, Material, Scene)>,
+    the_scene_skin_visualization: Vec<(graphics::UniformBuffer, Material, Scene, usize)>,
+    visualization_depth: usize,
 
     test_font_texture: graphics::Texture,
     test_font_uniform_buffer: graphics::UniformBuffer,
@@ -117,34 +118,33 @@ impl World {
                     None => continue,
                 };
 
-                let skeleton_transform = match skin.skeleton {
-                    Some(skeleton) => {
-                        Transform::from(scene.nodes[usize::from(skeleton)].transform.mat4().clone())
-                    }
-                    None => scene.transform.clone(),
-                };
+                for (joint_index, &node_index) in skin.joints.iter().enumerate() {
+                    let joint = &scene.nodes[usize::from(node_index)];
 
-                for &joint_index in &skin.joints {
-                    let joint = &scene.nodes[usize::from(joint_index)];
+                    let mut depth = 0;
 
                     let mut transform = joint.transform.mat4().clone();
                     let mut current = joint;
                     'transform: loop {
                         match current.parent {
-                            Some(index) => current = &scene.nodes[usize::from(index)],
+                            Some(index) => {
+                                current = &scene.nodes[usize::from(index)];
+                                depth += 1;
+                            }
                             None => break 'transform,
                         }
                         transform = transform * current.transform.mat4();
                     }
 
+                    let ibm = skin.inverse_bind_matrices[joint_index].mat4();
+
                     let mut joint_scene = the_sphere.duplicate(&graphics);
-                    joint_scene.transform = Transform::from(
-                        transform
-                            * skeleton_transform.mat4()
+                    joint_scene.transform = Transform::from(transform
+                            * ibm.inverse()
                             * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
                     );
 
-                    let name = joint.name.clone().unwrap_or(format!("{}", joint_index));
+                    let name = joint.name.clone().unwrap_or(format!("{}", node_index));
                     let name_tex = create_texture_for_text(&font, &graphics, &name);
 
                     let mat = Material {
@@ -156,7 +156,7 @@ impl World {
 
                     let ub = graphics.create_uniform_buffer();
 
-                    res.push((ub, mat, joint_scene));
+                    res.push((ub, mat, joint_scene, depth));
                 }
             }
             res
@@ -171,6 +171,7 @@ impl World {
             _the_sphere: the_sphere,
 
             the_scene_skin_visualization,
+            visualization_depth: 0,
 
             test_font_texture,
             test_font_uniform_buffer,
@@ -222,17 +223,22 @@ impl World {
                     self.camera.transform().position(),
                 );
             } else {
-                for (ub, name, scene) in &self.the_scene_skin_visualization {
-                    scene.render(&mut pass, perspective, view);
+                for (ub, name, scene, depth) in &self.the_scene_skin_visualization {
+                    if self.visualization_depth >= *depth {
+                        scene.render(&mut pass, perspective, view);
 
-                    pass.render_billboard(
-                        ub,
-                        &name,
-                        perspective,
-                        view,
-                        scene.transform.position(),
-                        self.camera.transform().position(),
-                    );
+                        let s = scene.transform.scale().y;
+                        let pos = scene.transform.position() + Vec3::new(0.0, s * 2.0, 0.0);
+
+                        pass.render_billboard(
+                            ub,
+                            &name,
+                            perspective,
+                            view,
+                            pos,
+                            self.camera.transform().position(),
+                        );
+                    }
                 }
             };
         }
@@ -314,6 +320,14 @@ async fn async_main(event_loop: EventLoop<()>, window: Arc<Window>) {
                     }
                     Some(VirtualKeyCode::Tab) if input.state == ElementState::Pressed => {
                         game.rendering_skin = !game.rendering_skin;
+                    }
+                    Some(VirtualKeyCode::Right) if input.state == ElementState::Pressed => {
+                        game.visualization_depth += 1;
+                    }
+                    Some(VirtualKeyCode::Left) if input.state == ElementState::Pressed => {
+                        if game.visualization_depth > 0 {
+                            game.visualization_depth -= 1;
+                        }
                     }
                     _ => return,
                 },

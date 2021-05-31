@@ -100,5 +100,6 @@ impl Node {
 #[derive(Debug, Clone)]
 pub struct Skin {
     pub joints: SmallVec<[u16; 4]>,
+    pub inverse_bind_matrices: Vec<Transform>,
     pub skeleton: Option<u16>,
 }

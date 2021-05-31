@@ -600,7 +600,8 @@ impl<'gfx: 'frame, 'frame> Pass<'gfx, 'frame> {
 
         let w = texture.width as f32;
         let h = texture.height as f32;
-        let scale = Vec3::new(w / w.max(h) * 10.0, h / w.max(h) * 10.0, 1.0);
+        let s = 1.2;
+        let scale = Vec3::new(w / w.max(h) * s, h / w.max(h) * s, 1.0);
         let rotation = {
             let fwd = camera_position - position;
             let fwd = -fwd.normalize().cross(GLOBAL_UP.into()).normalize();
