@@ -8,7 +8,7 @@ use ayude::*;
 use glutin::{window::WindowBuilder, event_loop::{EventLoop, ControlFlow}, dpi::LogicalSize, ContextBuilder, event::{WindowEvent, Event, DeviceEvent, VirtualKeyCode, ElementState}, Api, GlRequest, Robustness, GlProfile};
 
 pub struct SceneNode {
-    pub geometry: graphics::Geometry,
+    pub geometry: Handle<graphics::Geometry>,
     pub transform: [[f32; 4]; 4], // this doesn't go here, it's temporary
     pub diffuse: Option<graphics::Texture>,
     pub normal: Option<graphics::Texture>,
@@ -20,7 +20,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    fn upload(scene: gltf::UnloadedScene) -> Result<Self, AyudeError> {
+    fn upload(scene: gltf::UnloadedScene, meshes: &mut Catalog<graphics::Geometry>) -> Result<Self, AyudeError> {
         let mut nodes = Vec::new();
         let textures = scene.images.iter().map(|image| {
             graphics::Texture::from_rgba(&scene.images_byte_buffer[image.offset..image.offset+image.size], image.width as i32, image.height as i32)
@@ -35,6 +35,7 @@ impl Scene {
                 &unode.geometry_uvs,
                 &unode.geometry_indices
             );
+            let geometry = meshes.add(geometry);
 
             let diffuse = unode.diffuse.map(|index| {
                 textures[index].clone()
@@ -68,6 +69,8 @@ pub struct World {
     shader: graphics::Shader,
     sample_scene: Scene,
 
+    meshes: Catalog<graphics::Geometry>,
+
     physics: physics::PhysicsState
 }
 
@@ -76,13 +79,15 @@ impl World {
         static VERTEX_SOURCE: &str = include_str!("../resources/vertex.glsl");
         static FRAGMENT_SOURCE: &str = include_str!("../resources/fragment.glsl");
         let shader = graphics::Shader::from_sources(VERTEX_SOURCE, FRAGMENT_SOURCE).unwrap();
+
+        let mut meshes = Catalog::new();
     
         let sample_scene = {
             let gltf_file_name = "samples/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf";
             // let gltf_file_name = "samples/homework_09_simple_textures/scene.gltf";
             let gltf_file_name = "samples/physicstest.gltf";
             let unloaded = gltf::load_gltf(gltf_file_name).unwrap();
-            Scene::upload(unloaded).unwrap()
+            Scene::upload(unloaded, &mut meshes).unwrap()
         };
 
         let physics = physics::PhysicsState::new();
@@ -96,6 +101,8 @@ impl World {
 
             shader,
             sample_scene,
+
+            meshes,
 
             physics
         }
@@ -125,25 +132,30 @@ impl World {
 
         let view = glam::Mat4::look_at_rh(self.camera_position, self.camera_position + forward_direction, [0.0, 0.0, 1.0].into());
 
-        for mesh in &self.sample_scene.nodes {
+        for node in &self.sample_scene.nodes {
             // let scale = Matrix4::from_scale(100.0);
             // let rotation = Matrix4::from_angle_z(Rad(PI/2.0));
             // let translation = Matrix4::from_translation([0.0, 0.0, 0.0].into());
             // let model: [[f32; 4]; 4] = (scale * rotation * translation).into();
 
-            let model = mesh.transform;
+            let model = node.transform;
 
             self.shader.uniform("perspective", perspective.to_cols_array_2d());
             self.shader.uniform("view", view.to_cols_array_2d());
             self.shader.uniform("model", model);
-            self.shader.uniform("diffuse_texture", mesh.diffuse.clone().unwrap_or(graphics::Texture::empty()));
-            self.shader.uniform("normal_texture", mesh.normal.clone().unwrap_or(graphics::Texture::empty()));
-            self.shader.uniform("has_diffuse_texture", mesh.diffuse.is_some());
-            self.shader.uniform("has_normal_texture", mesh.normal.is_some());
-            self.shader.uniform("base_diffuse_color", mesh.base_diffuse_color);
+            self.shader.uniform("diffuse_texture", node.diffuse.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("normal_texture", node.normal.clone().unwrap_or(graphics::Texture::empty()));
+            self.shader.uniform("has_diffuse_texture", node.diffuse.is_some());
+            self.shader.uniform("has_normal_texture", node.normal.is_some());
+            self.shader.uniform("base_diffuse_color", node.base_diffuse_color);
             self.shader.uniform("u_light_direction", [-1.0, 0.4, 0.9f32]);
 
-            frame.render(&mesh.geometry, &self.shader);
+            let geometry = match self.meshes.get(node.geometry) {
+                None => continue,
+                Some(g) => g,
+            };
+
+            frame.render(&geometry, &self.shader);
         }
     }
 }
