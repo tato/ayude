@@ -5,7 +5,6 @@ struct VertexOutput {
     [[builtin(position)]] position: vec4<f32>;
 };
 
-[[block]]
 struct Uniforms {
     mvp: mat4x4<f32>;
     transpose_inverse_modelview: mat4x4<f32>;

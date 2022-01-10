@@ -1,7 +1,7 @@
 use ayude::{
     camera::Camera,
     graphics::{self, GraphicsContext, Material, TextureDescription},
-    import_gltf,
+    imgui, import_gltf,
     transform::Transform,
     Scene,
 };
@@ -139,9 +139,8 @@ impl World {
                     let ibm = skin.inverse_bind_matrices[joint_index].mat4();
 
                     let mut joint_scene = the_sphere.duplicate(&graphics);
-                    joint_scene.transform = Transform::from(transform
-                            * ibm.inverse()
-                            * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
+                    joint_scene.transform = Transform::from(
+                        transform * ibm.inverse() * Mat4::from_scale(Vec3::new(0.25, 0.25, 0.25)),
                     );
 
                     let name = joint.name.clone().unwrap_or(format!("{}", node_index));
@@ -161,6 +160,8 @@ impl World {
             }
             res
         };
+
+        // imgui::init();
 
         let world = World {
             camera,
@@ -247,6 +248,7 @@ impl World {
 }
 
 fn main() {
+    env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("a.yude")
@@ -278,6 +280,9 @@ async fn async_main(event_loop: EventLoop<()>, window: Arc<Window>) {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::Resized(size) => {
                     game.graphics.resize(size.width, size.height);
+                }
+                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    game.graphics.resize(new_inner_size.width, new_inner_size.height);
                 }
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;

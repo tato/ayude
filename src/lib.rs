@@ -12,6 +12,7 @@ use smallvec::SmallVec;
 use transform::Transform;
 
 pub mod camera;
+pub mod imgui;
 pub mod import_gltf;
 pub mod transform;
 
@@ -87,9 +88,7 @@ impl Node {
             meshes: self
                 .meshes
                 .iter()
-                .map(|(mesh, _, mat)| {
-                    (mesh.clone(), graphics.create_uniform_buffer(), mat.clone())
-                })
+                .map(|(mesh, _, mat)| (mesh.clone(), graphics.create_uniform_buffer(), mat.clone()))
                 .collect(),
             skin: self.skin.clone(),
             name: self.name.clone(),

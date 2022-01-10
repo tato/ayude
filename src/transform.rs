@@ -27,7 +27,7 @@ impl Transform {
         let (_, rotation, _) = self.0.to_scale_rotation_translation();
         rotation
     }
-    
+
     pub fn position(&self) -> Vec3 {
         let (_, _, position) = self.0.to_scale_rotation_translation();
         position

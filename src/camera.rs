@@ -1,7 +1,6 @@
 use glam::{EulerRot, Mat4, Vec2, Vec3};
 
-use crate::{transform::{GLOBAL_UP, Transform}};
-
+use crate::transform::{Transform, GLOBAL_UP};
 
 #[derive(Debug, Clone)]
 pub struct Camera {
